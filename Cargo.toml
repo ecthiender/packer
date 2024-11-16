@@ -1,0 +1,8 @@
+[package]
+name = "mytar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+crc-any = "2.5.0"
