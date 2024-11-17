@@ -1,12 +1,48 @@
 mod byteorder;
 mod header;
 
-use anyhow::{self, bail, Context};
-use header::Header;
 use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+
+use anyhow::{self, bail, Context};
+use clap::{Parser, Subcommand};
+
+use header::Header;
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// Turn debugging information on
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    debug: u8,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Pack up files to create an archive.
+    Pack {
+        /// List of files (i.e. their paths) to pack up.
+        #[arg(short, long, required(true), value_delimiter = ' ')]
+        input_files: Vec<PathBuf>,
+        /// Path to the output archive file.
+        #[arg(short, long)]
+        output_path: PathBuf,
+    },
+    /// Unpack all files from an archive.
+    Unpack {
+        /// File path to the mytar archive file.
+        #[arg(short, long)]
+        input_path: PathBuf,
+        /// Destination directory where all of the contents will be unpacked.
+        #[arg(short, long)]
+        output_path: PathBuf,
+    },
+}
 
 /*
  * Structure of the archive file -
@@ -37,38 +73,48 @@ struct FilePath {
 }
 
 fn main() -> anyhow::Result<()> {
-    let tarring = false;
-    if tarring {
-        let input_files: Vec<PathBuf> = ["ws/foobar", "ws/hello.txt", "ws/random.md"]
-            .into_iter()
-            .map(|fp| PathBuf::from(fp))
-            .collect();
-        let output_file = "ws/tarballs/output.mytar";
-        println!(
-            "Creating an archive at {:?}, for files: {:?}",
-            output_file, input_files
-        );
-        create_tar(PathBuf::from(output_file), &input_files)?;
-        println!("Done.");
-    } else {
-        let infile = "ws/tarballs/output.mytar";
-        let outfile = "ws/tarballs/out/";
-        let inpath = PathBuf::from(infile);
-        if !inpath.is_file() {
-            bail!("Input file has to be a mytar archive.")
+    let cli = Cli::parse();
+
+    match cli.command {
+        Command::Pack {
+            input_files,
+            output_path,
+        } => {
+            if input_files.is_empty() {
+                bail!("No input files provided. Atleast one input file is required.");
+            }
+            println!(
+                "Creating an archive at {}, for files: {}",
+                output_path.display(),
+                input_files
+                    .iter()
+                    .map(|f| f.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            create_tar(output_path, &input_files)?;
+            println!("Done.");
         }
-        let outpath = PathBuf::from(outfile);
-        if !outpath.is_dir() {
-            bail!("Output path has to be a directory where all contents of the archive will be unpacked.")
+        Command::Unpack {
+            input_path,
+            output_path,
+        } => {
+            if !input_path.is_file() {
+                bail!("Input file has to be a mytar archive.")
+            }
+            if !output_path.is_dir() {
+                bail!("Output path has to be a directory where all contents of the archive will be unpacked.")
+            }
+            println!(
+                "Unpacking archive {} into destination directory: {}",
+                input_path.display(),
+                output_path.display()
+            );
+            untar(input_path, output_path)?;
+            println!("Done.");
         }
-        println!(
-            "Unpacking archive '{}' into destination directory: {}",
-            inpath.display(),
-            outpath.display()
-        );
-        untar(inpath, outpath)?;
-        println!("Done.");
     }
+
     Ok(())
 }
 
@@ -104,7 +150,7 @@ const READ_BUFFER_SIZE: usize = 1024;
 fn read_file(
     header_buffer: &[u8],
     reader: &mut BufReader<File>,
-    output_path: &PathBuf,
+    output_path: &Path,
 ) -> anyhow::Result<()> {
     // 3. deserialize into header
     // 4. this gives all the file metadata.
@@ -126,7 +172,11 @@ fn read_file(
 
     // 7. create an empty file with the above metadata, in the correct path location
     let filepath = final_path.join(filename);
-    let file = OpenOptions::new().create(true).write(true).open(filepath)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(filepath)?;
     let mut writer = BufWriter::new(file);
     let file_size = header.file_size;
     // println!("File size {}.", file_size);
@@ -170,15 +220,14 @@ fn read_file(
 fn parse_path(path: PathBuf) -> anyhow::Result<(PathBuf, PathBuf)> {
     let filename = path
         .file_name()
-        .and_then(|os_str| Some(Path::new(os_str).to_path_buf()))
+        .map(|os_str| Path::new(os_str).to_path_buf())
         .with_context(|| "Unable to get filename from path")?;
     let mut ancestors = path.ancestors().map(|a| a.to_owned()).collect::<Vec<_>>();
-    let dirs_path;
-    if ancestors.len() < 1 {
-        dirs_path = PathBuf::new();
+    let dirs_path = if ancestors.len() < 2 {
+        PathBuf::new()
     } else {
-        dirs_path = ancestors.swap_remove(1);
-    }
+        ancestors.swap_remove(1)
+    };
     Ok((filename, dirs_path))
 }
 
@@ -187,7 +236,7 @@ fn create_tar(archive_path: PathBuf, files: &[PathBuf]) -> anyhow::Result<()> {
     let mut writer = BufWriter::new(outfile);
 
     let file_defs = files
-        .into_iter()
+        .iter()
         .map(|fp| {
             let path_str = fp
                 .file_name()
@@ -230,7 +279,7 @@ fn process_file(writer: &mut BufWriter<File>, file_def: &FilePath) -> anyhow::Re
             let filename = entry
                 .path()
                 .file_name()
-                .and_then(|os_str| Some(Path::new(os_str).to_path_buf()))
+                .map(|os_str| Path::new(os_str).to_path_buf())
                 .with_context(|| "Unable to get filename from path")?;
 
             let name: PathBuf = file_def.archive_path.join(filename);
