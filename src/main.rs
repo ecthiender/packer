@@ -1,5 +1,5 @@
+mod byteorder;
 mod header;
-mod utils;
 
 use anyhow::{self, bail, Context};
 use header::Header;
@@ -7,7 +7,6 @@ use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use utils::{u8_array_to_path, u8_array_to_u64};
 
 /*
  * Structure of the archive file -
@@ -109,12 +108,11 @@ fn read_file(
 ) -> anyhow::Result<()> {
     // 3. deserialize into header
     // 4. this gives all the file metadata.
-    let header = Header::from_bytes(header_buffer)?;
+    let header = Header::deserialize(header_buffer)?;
 
     // 5. parse path to check if this directory; if yes you get a list of dirs and a filepath, otherwise only a filepath
     // println!("Parsed header: {:?}", header);
-    let path = u8_array_to_path(&header.file_name);
-    let (filename, parent_dirs) = parse_path(path)?;
+    let (filename, parent_dirs) = parse_path(header.file_name)?;
 
     // 6. if dir, create all empty dirs, in the correct path location
     let final_path;
@@ -130,7 +128,7 @@ fn read_file(
     let filepath = final_path.join(filename);
     let file = OpenOptions::new().create(true).write(true).open(filepath)?;
     let mut writer = BufWriter::new(file);
-    let file_size = u8_array_to_u64(header.file_size);
+    let file_size = header.file_size;
     // println!("File size {}.", file_size);
 
     // 8. read X number of bytes given by file size in metadata
@@ -255,11 +253,8 @@ fn process_regular_file(
     file_def: &FilePath,
     metadata: fs::Metadata,
 ) -> anyhow::Result<()> {
-    let mut header = Header::new(&file_def.archive_path, metadata)?;
+    let header = Header::new(&file_def.archive_path, metadata)?;
     // println!("Created header: {:?}", header);
-    let checksum = header.calculate_checksum()?;
-    header.set_checksum(checksum);
-    // println!("Calculated header checksum: {:?}", checksum);
     // println!("Serializing header data..");
     let header_data = header.serialize()?;
     // println!("Writing header data..");
