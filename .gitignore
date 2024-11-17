@@ -1,4 +1,6 @@
 target/
 debug/
 ws/
+*.tar
+*.bag
 
