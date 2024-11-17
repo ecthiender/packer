@@ -1,4 +1,7 @@
+mod archive;
+mod backend;
 mod byteorder;
+mod byteorder_padded;
 mod header;
 
 use std::fs::File;
@@ -7,9 +10,12 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{self, bail, Context};
+use backend::tar::TarArchive;
 use clap::{Parser, Subcommand};
 
-use header::Header;
+use backend::bag::BagArchive;
+use backend::PackerBackend;
+use backend::{AsHeader, FilePath};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -17,6 +23,10 @@ struct Cli {
     /// Turn debugging information on
     #[arg(short, long, action = clap::ArgAction::Count)]
     debug: u8,
+
+    /// Which format to use. Default bag.
+    #[arg(short, long, default_value_t, value_enum)]
+    format: Format,
 
     #[command(subcommand)]
     command: Command,
@@ -44,37 +54,15 @@ enum Command {
     },
 }
 
-/*
- * Structure of the archive file -
- * <Header-1>
- * <Data-1>
- * <Header-2>
- * <Data-2>
- * <EOF_MARKER>
- * -------
- * Resources
- * - https://www.gnu.org/software/tar/manual/html_node/Standard.html
- * - https://www.ibm.com/docs/en/zos/3.1.0?topic=formats-tar-format-tar-archives
- * - https://docs.fileformat.com/compression/tar/
- */
-
-// const BLOCK_SIZE: u16 = 512;
-const EOF_MARKER: [u8; 1024] = [0; 1024];
-
-/// Represent different paths that we care about
-#[derive(Debug)]
-struct FilePath {
-    /// File path/name to store in the archive. This is different from the
-    /// actual path of the input file in the sytem, as strip the prefix and keep
-    /// only the filename as the root.
-    archive_path: PathBuf,
-    /// File path to find the file in the system, while creating the archive.
-    system_path: PathBuf,
+#[derive(Clone, clap::ValueEnum, Default, Debug)]
+enum Format {
+    #[default]
+    Bag,
+    Tar,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-
     match cli.command {
         Command::Pack {
             input_files,
@@ -92,7 +80,16 @@ fn main() -> anyhow::Result<()> {
                     .collect::<Vec<_>>()
                     .join(", "),
             );
-            create_tar(output_path, &input_files)?;
+            match cli.format {
+                Format::Bag => {
+                    let packer = BagArchive::new();
+                    pack_archive(&packer, output_path, &input_files)?;
+                }
+                Format::Tar => {
+                    let packer = TarArchive::new();
+                    pack_archive(&packer, output_path, &input_files)?;
+                }
+            }
             println!("Done.");
         }
         Command::Unpack {
@@ -110,7 +107,16 @@ fn main() -> anyhow::Result<()> {
                 input_path.display(),
                 output_path.display()
             );
-            untar(input_path, output_path)?;
+            match cli.format {
+                Format::Bag => {
+                    let packer = BagArchive::new();
+                    unpack_archive(&packer, input_path, output_path)?;
+                }
+                Format::Tar => {
+                    let packer = TarArchive::new();
+                    unpack_archive(&packer, input_path, output_path)?;
+                }
+            }
             println!("Done.");
         }
     }
@@ -118,49 +124,57 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn untar(input_path: PathBuf, output_path: PathBuf) -> anyhow::Result<()> {
+fn unpack_archive<T: PackerBackend>(
+    packer: &T,
+    input_path: PathBuf,
+    output_path: PathBuf,
+) -> anyhow::Result<()> {
     // 1. file open and start reading the binary file
     let archive_file = File::open(input_path)?;
     let mut reader = BufReader::new(archive_file);
-    let mut header_buffer = [0u8; 512];
+
+    packer.read_prologue(&mut reader)?;
+
+    let mut header_buffer = [0u8; 64];
     loop {
         // 2. read first 512 bytes; this is the header
-        // println!("Reading 512 bytes as header");
+        println!("Reading 64 bytes as header");
         reader
             .read_exact(&mut header_buffer)
             .with_context(|| "Reading header")?;
 
         // we have reached the EOF marker. We are done processing the tar archive.
-        if header_buffer == [0u8; 512] {
+        if packer.is_eoa(&mut reader, &header_buffer) {
             // if we see 512 bytes with 0s, read another 512 bytes block and
             // they should also be 0s to ensure we have reached EOF.
-            // println!("Looks like EOF");
+            println!(">>EOA<<");
             break;
         }
-        // println!("Processing this file..");
-        read_file(&header_buffer, &mut reader, &output_path)?;
-        // println!("Processing this file...DONE...");
+        println!("Processing this file..");
+        read_file(packer, &mut reader, &header_buffer, &output_path)?;
+        println!("Processing this file...DONE...");
     }
     Ok(())
 }
 
 /// Read in 8KB of buffer for efficient reading, for large files.
-const READ_BUFFER_SIZE: usize = 1024;
+const READ_BUFFER_SIZE: usize = 8192;
 
-fn read_file(
-    header_buffer: &[u8],
+fn read_file<T: PackerBackend>(
+    packer: &T,
     reader: &mut BufReader<File>,
+    header_buffer: &[u8],
     output_path: &Path,
 ) -> anyhow::Result<()> {
-    // 3. deserialize into header
-    // 4. this gives all the file metadata.
-    let header = Header::deserialize(header_buffer)?;
+    // 3. deserialize into header, this gives all the file metadata.
+    let header = packer.unpack_header(reader, header_buffer)?;
 
-    // 5. parse path to check if this directory; if yes you get a list of dirs and a filepath, otherwise only a filepath
+    // 4. parse path to check if this directory; if yes you get a list of dirs and a filepath,
+    // otherwise only a filepath
     // println!("Parsed header: {:?}", header);
-    let (filename, parent_dirs) = parse_path(header.file_name)?;
+    let (filename, parent_dirs) = parse_path(header.get_file_name())?;
 
-    // 6. if dir, create all empty dirs, in the correct path location
+    // 5. if dir, create all empty dirs, in the correct path location
     let final_path;
     if !parent_dirs.as_os_str().is_empty() {
         final_path = output_path.join(parent_dirs);
@@ -170,7 +184,7 @@ fn read_file(
     }
     // println!("Writing file to path: {:?} {:?}", filename, final_path);
 
-    // 7. create an empty file with the above metadata, in the correct path location
+    // 6. create an empty file with the above metadata, in the correct path location
     let filepath = final_path.join(filename);
     let file = OpenOptions::new()
         .create(true)
@@ -178,7 +192,7 @@ fn read_file(
         .truncate(true)
         .open(filepath)?;
     let mut writer = BufWriter::new(file);
-    let file_size = header.file_size;
+    let file_size = header.get_file_size();
     // println!("File size {}.", file_size);
 
     // 8. read X number of bytes given by file size in metadata
@@ -217,7 +231,7 @@ fn read_file(
 }
 
 /// Takes a path, returns the filename and any parent directories.
-fn parse_path(path: PathBuf) -> anyhow::Result<(PathBuf, PathBuf)> {
+fn parse_path(path: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
     let filename = path
         .file_name()
         .map(|os_str| Path::new(os_str).to_path_buf())
@@ -231,9 +245,15 @@ fn parse_path(path: PathBuf) -> anyhow::Result<(PathBuf, PathBuf)> {
     Ok((filename, dirs_path))
 }
 
-fn create_tar(archive_path: PathBuf, files: &[PathBuf]) -> anyhow::Result<()> {
+fn pack_archive<T: PackerBackend>(
+    packer: &T,
+    archive_path: PathBuf,
+    files: &[PathBuf],
+) -> anyhow::Result<()> {
     let outfile = File::create(archive_path)?;
     let mut writer = BufWriter::new(outfile);
+
+    packer.write_prologue(&mut writer)?;
 
     let file_defs = files
         .iter()
@@ -249,22 +269,30 @@ fn create_tar(archive_path: PathBuf, files: &[PathBuf]) -> anyhow::Result<()> {
         })
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
-    process_files(&mut writer, &file_defs)?;
+    process_files(packer, &mut writer, &file_defs)?;
     // println!("Finished processing and writing all files.");
     // println!("Writing EOF marker now..");
     // write the EOF marker
-    writer.write_all(&EOF_MARKER)?;
+    packer.write_epilogue(&mut writer)?;
     Ok(())
 }
 
-fn process_files(writer: &mut BufWriter<File>, filepaths: &[FilePath]) -> anyhow::Result<()> {
+fn process_files<T: PackerBackend>(
+    packer: &T,
+    writer: &mut BufWriter<File>,
+    filepaths: &[FilePath],
+) -> anyhow::Result<()> {
     for filepath in filepaths {
-        process_file(writer, filepath)?;
+        process_file(packer, writer, filepath)?;
     }
     Ok(())
 }
 
-fn process_file(writer: &mut BufWriter<File>, file_def: &FilePath) -> anyhow::Result<()> {
+fn process_file<T: PackerBackend>(
+    packer: &T,
+    writer: &mut BufWriter<File>,
+    file_def: &FilePath,
+) -> anyhow::Result<()> {
     // println!("");
     // println!("Processing file: {:?}", filepath);
     // read file metadata
@@ -288,43 +316,11 @@ fn process_file(writer: &mut BufWriter<File>, file_def: &FilePath) -> anyhow::Re
                 system_path: entry.path().to_owned(),
             });
         }
-        process_files(writer, &sub_paths)?;
+        process_files(packer, writer, &sub_paths)?;
     // if file is a regular file, then proceed with the base case
     } else {
-        process_regular_file(writer, file_def, metadata)?;
+        packer.pack_file(writer, file_def, metadata)?;
     }
 
-    Ok(())
-}
-
-fn process_regular_file(
-    writer: &mut BufWriter<File>,
-    file_def: &FilePath,
-    metadata: fs::Metadata,
-) -> anyhow::Result<()> {
-    let header = Header::new(&file_def.archive_path, metadata)?;
-    // println!("Created header: {:?}", header);
-    // println!("Serializing header data..");
-    let header_data = header.serialize()?;
-    // println!("Writing header data..");
-    writer.write_all(&header_data)?;
-
-    // println!("Open file for reading data..");
-    // open the current file for reading
-    let file = File::open(&file_def.system_path)?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = [0u8; READ_BUFFER_SIZE]; // 8 KB buffer for efficient reading
-    loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        // println!("Read {} bytes of data..", bytes_read);
-        if bytes_read == 0 {
-            break;
-        }
-        let data = buffer
-            .into_iter()
-            .take_while(|c| *c != 0u8)
-            .collect::<Vec<_>>();
-        writer.write_all(&data)?;
-    }
     Ok(())
 }

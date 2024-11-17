@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use crc_any::CRCu32;
 
-use crate::byteorder::{
+use super::byteorder::{
     bytes_to_i64, bytes_to_path, bytes_to_u32, bytes_to_u64, i64_to_bytes, path_to_bytes,
     u32_to_bytes, u64_to_bytes,
 };
