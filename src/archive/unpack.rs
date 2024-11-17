@@ -21,10 +21,10 @@ pub fn unpack<T: PackerBackend>(
 
     packer.read_prologue(&mut reader)?;
 
-    let mut header_buffer = [0u8; 64];
+    let mut header_buffer = vec![0u8; packer.header_block_size()];
     loop {
         // 2. read first 512 bytes; this is the header
-        println!("Reading 64 bytes as header");
+        // println!("Reading 64 bytes as header");
         reader
             .read_exact(&mut header_buffer)
             .with_context(|| "Reading header")?;
@@ -33,12 +33,12 @@ pub fn unpack<T: PackerBackend>(
         if packer.is_eoa(&mut reader, &header_buffer) {
             // if we see 512 bytes with 0s, read another 512 bytes block and
             // they should also be 0s to ensure we have reached EOF.
-            println!(">>EOA<<");
+            // println!(">>EOA<<");
             break;
         }
-        println!("Processing this file..");
+        // println!("Processing this file..");
         process_file(packer, &mut reader, &header_buffer, &output_path)?;
-        println!("Processing this file...DONE...");
+        // println!("Processing this file...DONE...");
     }
     Ok(())
 }

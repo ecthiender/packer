@@ -73,19 +73,6 @@ impl PackerBackend for BagArchive {
     type Header = FileHeader;
     type EOAMarker = [u8; 128];
 
-    fn is_eoa(&self, _reader: &mut BufReader<File>, header_buffer: &[u8]) -> bool {
-        header_buffer == [0u8; 64]
-    }
-
-    fn read_prologue(&self, reader: &mut BufReader<File>) -> anyhow::Result<()> {
-        let mut header_buffer = [0u8; 64];
-        reader
-            .read_exact(&mut header_buffer)
-            .with_context(|| "Reading header")?;
-        GlobalHeader::deserialize(&header_buffer)?;
-        Ok(())
-    }
-
     fn write_prologue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {
         let header = GlobalHeader::new();
         let header_block = header.serialize()?;
@@ -100,26 +87,26 @@ impl PackerBackend for BagArchive {
         metadata: std::fs::Metadata,
     ) -> anyhow::Result<()> {
         let header = FileHeader::new(&file.archive_path, metadata)?;
-        println!("Created header");
-        header.pprint();
-        println!("Serializing header data..");
+        // println!("Created header");
+        // header.pprint();
+        // println!("Serializing header data..");
         let header_block = header.serialize()?;
-        println!("Writing header data..");
+        // println!("Writing header data..");
         writer.write_all(&header_block.header)?;
-        println!("Writing filename and linkname..");
+        // println!("Writing filename and linkname..");
         writer.write_all(&header_block.file_name)?;
         if !header_block.link_name.is_empty() {
             writer.write_all(&header_block.link_name)?;
         }
 
-        println!("Open file for reading data..");
+        // println!("Open file for reading data..");
         // open the current file for reading
         let file = File::open(&file.system_path)?;
         let mut reader = BufReader::new(file);
         let mut buffer = [0u8; READ_BUFFER_SIZE]; // 8 KB buffer for efficient reading
         loop {
             let bytes_read = reader.read(&mut buffer)?;
-            println!("Read {} bytes of data..", bytes_read);
+            // println!("Read {} bytes of data..", bytes_read);
             if bytes_read == 0 {
                 break;
             }
@@ -132,6 +119,20 @@ impl PackerBackend for BagArchive {
         Ok(())
     }
 
+    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {
+        writer.write_all(&EOF_MARKER)?;
+        Ok(())
+    }
+
+    fn read_prologue(&self, reader: &mut BufReader<File>) -> anyhow::Result<()> {
+        let mut header_buffer = [0u8; 64];
+        reader
+            .read_exact(&mut header_buffer)
+            .with_context(|| "Reading header")?;
+        GlobalHeader::deserialize(&header_buffer)?;
+        Ok(())
+    }
+
     fn unpack_header(
         &self,
         reader: &mut BufReader<File>,
@@ -140,34 +141,37 @@ impl PackerBackend for BagArchive {
         // 3. deserialize into header
         // 4. this gives all the file metadata.
         let (mut header, filename_size, linkname_size) = FileHeader::deserialize(header_buffer)?;
-        println!("Parsed header: {:?}", header);
-        println!("Filename size: {:?}", filename_size);
-        println!("Link name size: {:?}", linkname_size);
+        //println!("Parsed header: {:?}", header);
+        //println!("Filename size: {:?}", filename_size);
+        //println!("Link name size: {:?}", linkname_size);
 
         // read the variable-length filename from the archive
         let mut filename_buffer = vec![0; filename_size as usize];
         reader.read_exact(&mut filename_buffer)?;
-        println!("file name raw: {:?}", filename_buffer);
+        // println!("file name raw: {:?}", filename_buffer);
         header.file_name = bytes_to_path(&filename_buffer);
-        println!("parsed filename: {:?}", header.file_name);
+        // println!("parsed filename: {:?}", header.file_name);
 
         // read the variable-length link name from the archive
         let mut linkname_buffer = vec![0; linkname_size as usize];
         reader.read_exact(&mut linkname_buffer)?;
-        println!("link name raw: {:?}", linkname_buffer);
+        // println!("link name raw: {:?}", linkname_buffer);
         let linkname = bytes_to_path(&linkname_buffer);
         header.link_name = if linkname.as_os_str().is_empty() {
             None
         } else {
             Some(linkname)
         };
-        println!("parsed link name: {:?}", header.link_name);
+        // println!("parsed link name: {:?}", header.link_name);
 
         Ok(header)
     }
 
-    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {
-        writer.write_all(&EOF_MARKER)?;
-        Ok(())
+    fn is_eoa(&self, _reader: &mut BufReader<File>, header_buffer: &[u8]) -> bool {
+        header_buffer == [0u8; 64]
+    }
+
+    fn header_block_size(&self) -> usize {
+        64
     }
 }

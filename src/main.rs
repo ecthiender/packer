@@ -12,16 +12,17 @@ use backend::tar::TarArchive;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// Turn debugging information on
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    debug: u8,
+    /// Pack/Unpack an archive
+    #[command(subcommand)]
+    command: Command,
 
-    /// Which format to use. Default bag.
+    /// Archive format to use.
     #[arg(short, long, default_value_t, value_enum)]
     format: Format,
 
-    #[command(subcommand)]
-    command: Command,
+    /// Turn debugging information on
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    debug: u8,
 }
 
 #[derive(Subcommand)]
@@ -35,7 +36,7 @@ enum Command {
         #[arg(short, long)]
         output_path: PathBuf,
     },
-    /// Unpack all files from an archive.
+    /// Unpack files from an archive.
     Unpack {
         /// File path to the mytar archive file.
         #[arg(short, long)]

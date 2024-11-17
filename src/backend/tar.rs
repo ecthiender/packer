@@ -41,10 +41,6 @@ impl PackerBackend for TarArchive {
     type Header = Header;
     type EOAMarker = [u8; 1024];
 
-    fn read_prologue(&self, _reader: &mut BufReader<File>) -> anyhow::Result<()> {
-        Ok(())
-    }
-
     fn write_prologue(&self, _writer: &mut BufWriter<File>) -> anyhow::Result<()> {
         Ok(())
     }
@@ -82,6 +78,15 @@ impl PackerBackend for TarArchive {
         Ok(())
     }
 
+    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {
+        writer.write_all(&EOF_MARKER)?;
+        Ok(())
+    }
+
+    fn read_prologue(&self, _reader: &mut BufReader<File>) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     fn unpack_header(
         &self,
         _reader: &mut BufReader<File>,
@@ -94,8 +99,7 @@ impl PackerBackend for TarArchive {
         header_buffer == [0u8; 512]
     }
 
-    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {
-        writer.write_all(&EOF_MARKER)?;
-        Ok(())
+    fn header_block_size(&self) -> usize {
+        512
     }
 }

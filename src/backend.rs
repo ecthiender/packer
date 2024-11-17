@@ -27,10 +27,9 @@ pub trait PackerBackend {
     /// End of archive (EOA) marker.
     type EOAMarker;
 
-    fn is_eoa(&self, reader: &mut BufReader<File>, header_buffer: &[u8]) -> bool;
+    /** packing related functions **/
 
-    fn read_prologue(&self, reader: &mut BufReader<File>) -> anyhow::Result<()>;
-
+    /// Write any prologue at the begining of the archive file.
     fn write_prologue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()>;
 
     /// Pack a file to the writer.
@@ -41,6 +40,15 @@ pub trait PackerBackend {
         metadata: fs::Metadata,
     ) -> anyhow::Result<()>;
 
+    /// Write any epilogue at the end of the archive file. For example, this can be used to write
+    /// End Of Archive (EOF) markers.
+    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()>;
+
+    /** unpacking related functions **/
+
+    /// Read any prologue at the begining of the archive file.
+    fn read_prologue(&self, reader: &mut BufReader<File>) -> anyhow::Result<()>;
+
     /// Unpack a header from the reader.
     fn unpack_header(
         &self,
@@ -48,7 +56,11 @@ pub trait PackerBackend {
         header_buffer: &[u8],
     ) -> anyhow::Result<Self::Header>;
 
-    fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()>;
+    /// Check if End Of Archive (EOA) is reached
+    fn is_eoa(&self, reader: &mut BufReader<File>, header_buffer: &[u8]) -> bool;
+
+    /// Get the header block size
+    fn header_block_size(&self) -> usize;
 }
 
 pub trait AsHeader {

@@ -171,14 +171,14 @@ impl FileHeaderLL {
             .as_ref()
             .map(|bytes| bytes.len())
             .unwrap_or(0) as u64;
-        println!(
-            ">>>> File name: {:?}; file name size: {:?}",
-            file_name_bytes, file_name_size
-        );
-        println!(
-            ">>>> Link name: {:?}; link name size: {:?}",
-            link_name_bytes, link_name_size
-        );
+        //println!(
+        //    ">>>> File name: {:?}; file name size: {:?}",
+        //    file_name_bytes, file_name_size
+        //);
+        //println!(
+        //    ">>>> Link name: {:?}; link name size: {:?}",
+        //    link_name_bytes, link_name_size
+        //);
         Ok(Self {
             file_name: file_name_bytes,
             file_name_size: u64_to_bytes(file_name_size),
@@ -188,7 +188,7 @@ impl FileHeaderLL {
             group_id: u32_to_bytes(header.group_id),
             created_at: i64_to_bytes(header.created_at),
             last_modified: i64_to_bytes(header.last_modified),
-            type_flag: header.type_flag.as_byte(),
+            type_flag: header.type_flag as u8,
             link_name: link_name_bytes.unwrap_or_default(),
             link_name_size: u64_to_bytes(link_name_size),
             checksum: [0u8; 4],
@@ -329,17 +329,17 @@ impl FileHeader {
 
     pub fn serialize(self) -> anyhow::Result<HeaderBlock> {
         let mut header_ll = FileHeaderLL::new(self)?;
-        println!("Constructed raw header: {:?}", header_ll);
+        // println!("Constructed raw header: {:?}", header_ll);
         let checksum = header_ll.calculate_checksum()?;
-        println!("Calculated checksum: {}", checksum);
+        // println!("Calculated checksum: {}", checksum);
         header_ll.set_checksum(checksum);
-        println!("Constructed raw header: {:?}", header_ll);
+        // println!("Constructed raw header: {:?}", header_ll);
         header_ll.serialize()
     }
 
     pub fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64, u64)> {
         let mut ll = FileHeaderLL::from_bytes(bytes)?;
-        println!("Low-level file header : {:?}", ll);
+        // println!("Low-level file header : {:?}", ll);
         // get the stored checksum
         let stored_checksum = bytes_to_u32(ll.checksum);
         // set the checksum to empty in low-level header object
@@ -376,10 +376,11 @@ impl FileHeader {
 }
 
 #[derive(Debug)]
+#[repr(u8)]
 pub enum TypeFlag {
-    Regular,
-    HardLink,
-    SymLink,
+    Regular = 0,
+    HardLink = 1,
+    SymLink = 2,
 }
 
 impl TypeFlag {
@@ -390,14 +391,6 @@ impl TypeFlag {
             TypeFlag::HardLink
         } else {
             TypeFlag::Regular
-        }
-    }
-
-    fn as_byte(&self) -> u8 {
-        match self {
-            TypeFlag::Regular => b'0',
-            TypeFlag::HardLink => b'1',
-            TypeFlag::SymLink => b'2',
         }
     }
 
