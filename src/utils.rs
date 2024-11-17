@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::str;
 
 // convert a u32 value to a [u8; 8] padded with zeros if required.
 pub fn u32_to_u8_array(value: u32) -> [u8; 8] {
@@ -14,6 +15,12 @@ pub fn u64_to_u8_array(value: u64) -> [u8; 12] {
     let bytes = value.to_le_bytes(); // Convert the u64 to a 8-byte array (little-endian)
     padded[..8].copy_from_slice(&bytes); // Copy the 8 bytes into the first half
     padded
+}
+
+pub fn u8_array_to_u64(input: [u8; 12]) -> u64 {
+    let mut buffer = [0u8; 8]; // Create an 8-byte buffer
+    buffer.copy_from_slice(&input[..8]); // Take the first 8 bytes of the input
+    u64::from_le_bytes(buffer) // Convert to u64 in little-endian order
 }
 
 // convert a i64 value to a [u8; 12] padded with zeros if required.
@@ -34,6 +41,17 @@ pub fn path_to_u8_array(path: &Path) -> [u8; 100] {
         buffer[..len].copy_from_slice(&path_bytes[..len]);
     }
     buffer
+}
+
+pub fn u8_array_to_path(array: &[u8; 100]) -> PathBuf {
+    // Find the first null terminator (0u8) to handle null-padded strings
+    let valid_length = array.iter().position(|&byte| byte == 0).unwrap_or(100);
+
+    // Convert the valid part of the byte array to a UTF-8 string
+    let path_str = str::from_utf8(&array[..valid_length]).unwrap_or("");
+
+    // Convert the string to a PathBuf
+    PathBuf::from(path_str)
 }
 
 //fn to_u8_array<T: ToBytes, const N: usize>(value: T) -> [u8; N] {
