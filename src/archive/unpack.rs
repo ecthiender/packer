@@ -113,7 +113,8 @@ fn process_file<T: PackerBackend>(
     Ok(())
 }
 
-/// Takes a path, returns the filename and any parent directories.
+/// Takes a path, returns the filename and any parent directories. For example, given
+/// `/some/path/foo/bar.txt`, this returns `(bar.txt, /some/path/foo)`.
 fn parse_path(path: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
     let filename = path
         .file_name()

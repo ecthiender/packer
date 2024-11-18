@@ -38,7 +38,7 @@ enum Command {
     },
     /// Unpack files from an archive.
     Unpack {
-        /// File path to the mytar archive file.
+        /// File path to the bag archive file.
         #[arg(short, long)]
         input_path: PathBuf,
         /// Destination directory where all of the contents will be unpacked.
@@ -90,7 +90,7 @@ fn main() -> anyhow::Result<()> {
             output_path,
         } => {
             if !input_path.is_file() {
-                bail!("Input file has to be a mytar archive.")
+                bail!("Input file has to be a bag archive.")
             }
             if !output_path.is_dir() {
                 bail!("Output path has to be a directory where all contents of the archive will be unpacked.")

@@ -15,8 +15,6 @@ pub fn pack<T: PackerBackend>(
     let outfile = File::create(archive_path)?;
     let mut writer = BufWriter::new(outfile);
 
-    packer.write_prologue(&mut writer)?;
-
     let file_defs = files
         .iter()
         .map(|fp| {
@@ -31,10 +29,8 @@ pub fn pack<T: PackerBackend>(
         })
         .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
+    packer.write_prologue(&mut writer)?;
     process_files(packer, &mut writer, &file_defs)?;
-    // println!("Finished processing and writing all files.");
-    // println!("Writing EOF marker now..");
-    // write the EOF marker
     packer.write_epilogue(&mut writer)?;
     Ok(())
 }
