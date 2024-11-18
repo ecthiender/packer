@@ -2,7 +2,7 @@
 
 A file archiving utility, like tar and others.
 
-This also defines a custom archive format called "bag", which is much more compact than tar.
+Packer also defines a custom archive file format called "bag", which is much more compact than tar.
 
 Currently supported formats are -
 - bag
@@ -12,7 +12,7 @@ Currently supported formats are -
 
 This is just for fun. I wanted to play with writing a low-level tool dealing with binary data
 formats. It started out with being a tar clone. But in the process I thought I could come with a
-better format, and this is what is has come up to.
+better format.
 
 ## Download
 
@@ -41,7 +41,7 @@ packer unpack -i myarchive.bag -o /some/path/destination-dir
 
 ### Other formats
 
-This uses the bag format by default. If you want to use a different format you can pass a flag -
+It uses the bag format by default. If you want to use a different format you can pass `--format` or `-f` -
 
 ```sh
 packer pack -f tar -i /some/path/to/dir -o myarchive.tar
@@ -49,8 +49,8 @@ packer pack -f tar -i /some/path/to/dir -o myarchive.tar
 
 ## Help
 
-Run the help command to see all possible commands and flags. Make sure to check subcommands help as
-well. 
+Run the help command to see all possible commands and flags. Make sure to check help of the
+subcommands as well.
 
 ```sh
 packer --help
