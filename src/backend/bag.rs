@@ -38,7 +38,6 @@ pub mod header;
 use std::{
     fs::File,
     io::{BufReader, BufWriter, Read, Write},
-    path::PathBuf,
 };
 
 use anyhow::{self, Context};
@@ -61,12 +60,17 @@ impl BagArchive {
 }
 
 impl AsHeader for FileHeader {
-    fn get_file_size(&self) -> u64 {
-        self.file_size
-    }
-
-    fn get_file_name(&self) -> &PathBuf {
-        &self.file_name
+    fn get_metadata(&self) -> super::FileMetadata {
+        super::FileMetadata {
+            file_name: self.file_name.clone(),
+            file_size: self.file_size,
+            file_mode: self.file_mode,
+            user_id: self.user_id,
+            group_id: self.group_id,
+            created_at: self.created_at,
+            last_modified: self.last_modified,
+            link_name: self.link_name.clone(),
+        }
     }
 }
 

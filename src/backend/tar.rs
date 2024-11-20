@@ -8,7 +8,6 @@ mod header;
 use std::{
     fs::File,
     io::{BufReader, BufWriter, Write},
-    path::PathBuf,
 };
 
 use super::{AsHeader, PackerBackend};
@@ -26,12 +25,17 @@ impl TarArchive {
 }
 
 impl AsHeader for Header {
-    fn get_file_size(&self) -> u64 {
-        self.file_size
-    }
-
-    fn get_file_name(&self) -> &PathBuf {
-        &self.file_name
+    fn get_metadata(&self) -> super::FileMetadata {
+        super::FileMetadata {
+            file_name: self.file_name.clone(),
+            file_size: self.file_size,
+            file_mode: self.file_mode,
+            user_id: self.user_id,
+            group_id: self.group_id,
+            created_at: 0,
+            last_modified: self.last_modified,
+            link_name: None,
+        }
     }
 }
 

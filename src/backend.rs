@@ -18,6 +18,19 @@ pub struct FilePath {
     pub system_path: PathBuf,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct FileMetadata {
+    pub file_name: PathBuf,
+    pub file_size: u64,
+    pub file_mode: u32,
+    pub user_id: u32,
+    pub group_id: u32,
+    pub created_at: i64,
+    pub last_modified: i64,
+    pub link_name: Option<PathBuf>,
+}
+
 /// Indicates a specific packer backend, or in other words a different archive format. Each archive
 /// format is backed by a backend implementation. Currently we support the BAG and TAR formats.
 pub trait PackerBackend {
@@ -64,6 +77,5 @@ pub trait PackerBackend {
 }
 
 pub trait AsHeader {
-    fn get_file_name(&self) -> &PathBuf;
-    fn get_file_size(&self) -> u64;
+    fn get_metadata(&self) -> FileMetadata;
 }

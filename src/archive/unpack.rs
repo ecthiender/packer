@@ -1,10 +1,13 @@
 use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
+use filetime::FileTime;
 use log::{debug, trace};
+use nix::unistd;
 
 use crate::archive::file::read_file_slice_chunked;
 use crate::backend::{AsHeader, PackerBackend};
@@ -48,11 +51,12 @@ fn process_file<T: PackerBackend>(
 ) -> anyhow::Result<()> {
     // 3. deserialize into header, this gives all the file metadata.
     let header = packer.unpack_header(reader, header_buffer)?;
+    let metadata = header.get_metadata();
 
     // 4. parse path to check if this directory; if yes you get a list of dirs and a filepath,
     // otherwise only a filepath
-    trace!("Parsed header for file : {:?}", header.get_file_name());
-    let (filename, parent_dirs) = parse_path(header.get_file_name())?;
+    trace!("Parsed header for file : {:?}", metadata.file_name);
+    let (filename, parent_dirs) = parse_path(&metadata.file_name)?;
     trace!(
         "Parsed path and parent dirs : {} - {}",
         filename.display(),
@@ -75,22 +79,37 @@ fn process_file<T: PackerBackend>(
 
     // 6. create an empty file with the above metadata, in the correct path location
     let filepath = final_path.join(filename);
-    trace!("Effective destination file path: {}", final_path.display());
+    trace!("Effective destination file path: {}", filepath.display());
     let file = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(filepath)?;
+        .open(&filepath)?;
     let mut writer = BufWriter::new(file);
-    let file_size = header.get_file_size();
-    trace!("File size {}.", file_size);
+    trace!("File size {}.", metadata.file_size);
 
     // 8. read X number of bytes given by file size in metadata
     // 9. write those bytes into file created in 7.
-    read_file_slice_chunked(reader, file_size, |data| {
+    read_file_slice_chunked(reader, metadata.file_size, |data| {
         writer.write_all(data)?;
         Ok(())
     })?;
+
+    // 10. set file metadata
+    // Set permissions
+    let mut permissions = fs::metadata(&filepath)?.permissions();
+    permissions.set_mode(metadata.file_mode);
+    fs::set_permissions(&filepath, permissions)?;
+
+    // Set UID and GID
+    let uid = unistd::Uid::from_raw(metadata.user_id); // Replace with desired UID
+    let gid = unistd::Gid::from_raw(metadata.group_id); // Replace with desired GID
+    unistd::chown(&filepath, Some(uid), Some(gid)).with_context(|| "Failed to change ownership")?;
+
+    // Set created and modification times
+    let created_time = FileTime::from_unix_time(metadata.created_at, 0);
+    let modified_time = FileTime::from_unix_time(metadata.last_modified, 0);
+    filetime::set_file_times(filepath, created_time, modified_time)?;
     Ok(())
 }
 
