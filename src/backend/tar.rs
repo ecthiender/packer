@@ -69,11 +69,7 @@ impl PackerBackend for TarArchive {
             if bytes_read == 0 {
                 break;
             }
-            let data = buffer
-                .into_iter()
-                .take_while(|c| *c != 0u8)
-                .collect::<Vec<_>>();
-            writer.write_all(&data)?;
+            writer.write_all(&buffer[..bytes_read])?;
         }
         Ok(())
     }

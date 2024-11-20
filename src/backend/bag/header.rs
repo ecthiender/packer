@@ -239,8 +239,8 @@ impl FileHeader {
         let calc_checksum = ll.calculate_checksum()?;
         // check if checksum matches
         if calc_checksum != stored_checksum {
-            println!(
-                "WARN: Checksums don't match for file {}. Stored checksum: {}, calculated checksum: {}",
+            bail!(
+                "ERROR: Checksums don't match for file {}. This means that the BAG archive has corrupted data. Stored checksum: {}, calculated checksum: {}",
                 bytes_to_path(&ll.file_name)?.display(),
                 stored_checksum,
                 calc_checksum
