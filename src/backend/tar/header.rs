@@ -5,6 +5,7 @@ use std::{fs, os::unix::fs::MetadataExt, path::Path};
 use anyhow::anyhow;
 use anyhow::bail;
 use crc_any::CRCu32;
+use log::debug;
 
 use super::byteorder::{
     bytes_to_i64, bytes_to_path, bytes_to_u32, bytes_to_u64, i64_to_bytes, path_to_bytes,
@@ -47,16 +48,16 @@ impl Header {
 
     #[allow(dead_code)]
     pub fn pprint(&self) {
-        println!("File metadata");
-        println!("-------------");
-        println!(">> File name: {}", self.file_name.display());
-        println!(">> File mode: {}", self.file_mode);
-        println!(">> uid: {}", self.user_id);
-        println!(">> gid: {}", self.group_id);
-        println!(">> file size: {}", self.file_size);
-        println!(">> mtime: {}", self.last_modified);
-        println!(">> typeflag: {:?}", self.type_flag);
-        println!("-------------");
+        debug!("File metadata");
+        debug!("-------------");
+        debug!(">> File name: {}", self.file_name.display());
+        debug!(">> File mode: {}", self.file_mode);
+        debug!(">> uid: {}", self.user_id);
+        debug!(">> gid: {}", self.group_id);
+        debug!(">> file size: {}", self.file_size);
+        debug!(">> mtime: {}", self.last_modified);
+        debug!(">> typeflag: {:?}", self.type_flag);
+        debug!("-------------");
     }
 
     pub fn serialize(self) -> anyhow::Result<[u8; 512]> {

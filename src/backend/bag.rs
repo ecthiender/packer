@@ -46,6 +46,7 @@ use anyhow::{self, Context};
 use byteorder::bytes_to_path;
 use global_header::GlobalHeader;
 use header::FileHeader;
+use log::trace;
 
 use super::{AsHeader, PackerBackend};
 
@@ -88,13 +89,13 @@ impl PackerBackend for BagArchive {
     ) -> anyhow::Result<u64> {
         let header = FileHeader::new(&file.archive_path, metadata)?;
         let file_size = header.file_size;
-        println!("Created header");
+        trace!("Created header");
         header.pprint();
-        println!("Serializing header data..");
+        trace!("Serializing header data..");
         let header_block = header.serialize()?;
-        println!("Writing header data..");
+        trace!("Writing header data..");
         writer.write_all(&header_block.header)?;
-        println!("Writing filename and linkname..");
+        trace!("Writing filename and linkname..");
         writer.write_all(&header_block.file_name)?;
         Ok(file_size)
     }
@@ -121,28 +122,28 @@ impl PackerBackend for BagArchive {
         // 3. deserialize into header
         // 4. this gives all the file metadata.
         let (mut header, filename_size) = FileHeader::deserialize(header_buffer)?;
-        //println!("Parsed header: {:?}", header);
-        //println!("Filename size: {:?}", filename_size);
-        //println!("Link name size: {:?}", linkname_size);
+        //debug!("Parsed header: {:?}", header);
+        //debug!("Filename size: {:?}", filename_size);
+        //debug!("Link name size: {:?}", linkname_size);
 
         // read the variable-length filename from the archive
         let mut filename_buffer = vec![0; filename_size as usize];
         reader.read_exact(&mut filename_buffer)?;
-        // println!("file name raw: {:?}", filename_buffer);
+        // trace!("file name raw: {:?}", filename_buffer);
         header.file_name = bytes_to_path(&filename_buffer)?;
-        // println!("parsed filename: {:?}", header.file_name);
+        // debug!("parsed filename: {:?}", header.file_name);
 
         // read the variable-length link name from the archive
         //let mut linkname_buffer = vec![0; linkname_size as usize];
         //reader.read_exact(&mut linkname_buffer)?;
-        //// println!("link name raw: {:?}", linkname_buffer);
+        //// trace!("link name raw: {:?}", linkname_buffer);
         //let linkname = bytes_to_path(&linkname_buffer);
         //header.link_name = if linkname.as_os_str().is_empty() {
         //    None
         //} else {
         //    Some(linkname)
         //};
-        // println!("parsed link name: {:?}", header.link_name);
+        // debug!("parsed link name: {:?}", header.link_name);
 
         Ok(header)
     }

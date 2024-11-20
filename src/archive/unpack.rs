@@ -4,6 +4,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
+use log::{debug, trace};
 
 use crate::archive::file::read_file_slice_chunked;
 use crate::backend::{AsHeader, PackerBackend};
@@ -22,7 +23,7 @@ pub fn unpack<T: PackerBackend>(
     let mut header_buffer = vec![0u8; packer.header_block_size()];
     loop {
         // 2. read first `block_size` bytes; this is the header
-        // println!("Reading {} bytes as header", packer.header_block_size());
+        trace!("Reading {} bytes as header", packer.header_block_size());
         reader
             .read_exact(&mut header_buffer)
             .with_context(|| "Reading header")?;
@@ -31,12 +32,10 @@ pub fn unpack<T: PackerBackend>(
         if packer.is_eoa(&mut reader, &header_buffer) {
             // if we see 512 bytes with 0s, read another 512 bytes block and
             // they should also be 0s to ensure we have reached EOF.
-            // println!(">>EOA<<");
+            // trace!(">>EOA<<");
             break;
         }
-        // println!("Processing this file..");
         process_file(packer, &mut reader, &header_buffer, &output_path)?;
-        // println!("Processing this file...DONE...");
     }
     Ok(())
 }
@@ -52,9 +51,9 @@ fn process_file<T: PackerBackend>(
 
     // 4. parse path to check if this directory; if yes you get a list of dirs and a filepath,
     // otherwise only a filepath
-    println!("Parsed header for file : {:?}", header.get_file_name());
+    trace!("Parsed header for file : {:?}", header.get_file_name());
     let (filename, parent_dirs) = parse_path(header.get_file_name())?;
-    println!(
+    trace!(
         "Parsed path and parent dirs : {} - {}",
         filename.display(),
         parent_dirs.display()
@@ -68,11 +67,15 @@ fn process_file<T: PackerBackend>(
     } else {
         final_path = output_path.to_path_buf();
     }
-    println!("Writing file to path: {:?} {:?}", filename, final_path);
+    debug!(
+        "Writing file {} to path: {}",
+        filename.display(),
+        final_path.display()
+    );
 
     // 6. create an empty file with the above metadata, in the correct path location
     let filepath = final_path.join(filename);
-    println!("Effective destination file path: {}", final_path.display());
+    trace!("Effective destination file path: {}", final_path.display());
     let file = OpenOptions::new()
         .create(true)
         .write(true)
@@ -80,7 +83,7 @@ fn process_file<T: PackerBackend>(
         .open(filepath)?;
     let mut writer = BufWriter::new(file);
     let file_size = header.get_file_size();
-    println!("File size {}.", file_size);
+    trace!("File size {}.", file_size);
 
     // 8. read X number of bytes given by file size in metadata
     // 9. write those bytes into file created in 7.

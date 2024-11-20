@@ -51,10 +51,10 @@ impl PackerBackend for TarArchive {
     ) -> anyhow::Result<u64> {
         let header = Header::new(&file.archive_path, metadata)?;
         let file_size = header.file_size;
-        // println!("Created header: {:?}", header);
-        // println!("Serializing header data..");
+        // debug!("Created header: {:?}", header);
+        // trace!("Serializing header data..");
         let header_data = header.serialize()?;
-        // println!("Writing header data..");
+        // trace!("Writing header data..");
         writer.write_all(&header_data)?;
         Ok(file_size)
     }

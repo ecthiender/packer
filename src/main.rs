@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{self, bail};
 use clap::{Parser, Subcommand};
+use log::info;
 
 use backend::bag::BagArchive;
 use backend::tar::TarArchive;
@@ -21,8 +22,8 @@ struct Cli {
     format: Format,
 
     /// Turn debugging information on
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    debug: u8,
+    #[arg(short, long, default_value_t, value_enum)]
+    level: LogLevel,
 }
 
 #[derive(Subcommand)]
@@ -54,8 +55,25 @@ enum Format {
     Tar,
 }
 
+#[derive(Clone, clap::ValueEnum, Default, Debug)]
+enum LogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
 fn main() -> anyhow::Result<()> {
+    // parse CLI arguments
     let cli = Cli::parse();
+
+    // intialise the logger
+    let mut clog = colog::default_builder();
+    clog.filter(None, mk_log_level_filter(cli.level));
+    clog.init();
+
     match cli.command {
         Command::Pack {
             input_files,
@@ -64,7 +82,8 @@ fn main() -> anyhow::Result<()> {
             if input_files.is_empty() {
                 bail!("No input files provided. Atleast one input file is required.");
             }
-            println!(
+
+            info!(
                 "Creating an archive at {}, for files: {}",
                 output_path.display(),
                 input_files
@@ -83,19 +102,19 @@ fn main() -> anyhow::Result<()> {
                     archive::pack(&packer, output_path, &input_files)?;
                 }
             }
-            println!("Done.");
+            info!("Done.");
         }
         Command::Unpack {
             input_path,
             output_path,
         } => {
             if !input_path.is_file() {
-                bail!("Input file has to be a bag archive.")
+                bail!("Input file has to be a bag archive.");
             }
             if !output_path.is_dir() {
-                bail!("Output path has to be a directory where all contents of the archive will be unpacked.")
+                bail!("Output path has to be a directory where all contents of the archive will be unpacked.");
             }
-            println!(
+            info!(
                 "Unpacking archive {} into destination directory: {}",
                 input_path.display(),
                 output_path.display()
@@ -110,9 +129,19 @@ fn main() -> anyhow::Result<()> {
                     archive::unpack(&packer, input_path, output_path)?;
                 }
             }
-            println!("Done.");
+            info!("Done.");
         }
     }
 
     Ok(())
+}
+
+fn mk_log_level_filter(level: LogLevel) -> log::LevelFilter {
+    match level {
+        LogLevel::Error => log::LevelFilter::Error,
+        LogLevel::Warn => log::LevelFilter::Warn,
+        LogLevel::Info => log::LevelFilter::Info,
+        LogLevel::Debug => log::LevelFilter::Debug,
+        LogLevel::Trace => log::LevelFilter::Trace,
+    }
 }

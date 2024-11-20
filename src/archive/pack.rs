@@ -4,6 +4,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{self, bail, Context};
+use log::{debug, trace};
 
 use crate::archive::file::read_file_chunked;
 use crate::backend::{FilePath, PackerBackend};
@@ -52,8 +53,7 @@ fn process_file<T: PackerBackend>(
     writer: &mut BufWriter<File>,
     file_def: &FilePath,
 ) -> anyhow::Result<()> {
-    println!();
-    println!("Processing file: {}", file_def.archive_path.display());
+    debug!("Processing file: {}", file_def.archive_path.display());
     // read file metadata
     let metadata = fs::metadata(&file_def.system_path)?;
 
@@ -91,11 +91,11 @@ fn process_file<T: PackerBackend>(
         let file_size = packer.pack_header(writer, file_def, metadata)?;
         // once header is packed; pack the source file into the archive.
 
-        // println!("Open file for reading data..");
+        // trace!("Open file for reading data..");
         // open the current file for reading
         read_file_chunked(&file_def.system_path, file_size, |data| {
             writer.write_all(data)?;
-            println!("Wrote data to file..");
+            trace!("Wrote data to file..");
             Ok(())
         })?;
     }
