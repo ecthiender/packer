@@ -6,15 +6,15 @@
  * --------------------+---------------+--------+----------------------------------------------------+
  * | Field             |  Size(bytes)  | Offset |  Remarks                                           |
  * +-------------------+---------------+--------+----------------------------------------------------+
- * | <file-name-size>  |  8            |  ?     |  Size of the file name itself                      |
- * | <file-size>       |  8            |  ?     |  Size of the file                                  |
- * | <file-mode>       |  4            |  ?     |  File permissions or mode                          |
- * | <uid>             |  4            |  ?     |  uid of the file owner                             |
- * | <gid>             |  4            |  ?     |  gid of the file group                             |
- * | <ctime>           |  8            |  ?     |  Created time of file                              |
- * | <mtime>           |  8            |  ?     |  Last modified time of file                        |
- * | <type-flag>       |  1            |  ?     |  Flag indicating file type                         |
- * | <checksum>        |  4            |  ?     |  Checksum of this header, with null checksum field |
+ * | <file-name-size>  |  8            |  0     |  Size of the file name itself                      |
+ * | <file-size>       |  8            |  8     |  Size of the file                                  |
+ * | <file-mode>       |  4            |  16    |  File permissions or mode                          |
+ * | <uid>             |  4            |  20    |  uid of the file owner                             |
+ * | <gid>             |  4            |  24    |  gid of the file group                             |
+ * | <ctime>           |  8            |  28    |  Created time of file                              |
+ * | <mtime>           |  8            |  36    |  Last modified time of file                        |
+ * | <type-flag>       |  1            |  44    |  Flag indicating file type                         |
+ * | <checksum>        |  4            |  45    |  Checksum of this header, with null checksum field |
  * +-------------------+---------------+--------+----------------------------------------------------+
  *
  * This header data is of 49 bytes. But a header block is treated as 64 bytes block. After 49 bytes,
