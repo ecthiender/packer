@@ -32,6 +32,7 @@
  */
 
 mod byteorder;
+mod global_header;
 pub mod header;
 
 use std::{
@@ -43,7 +44,8 @@ use std::{
 use anyhow::{self, Context};
 
 use byteorder::bytes_to_path;
-use header::{FileHeader, GlobalHeader};
+use global_header::GlobalHeader;
+use header::FileHeader;
 
 use super::{AsHeader, PackerBackend};
 
@@ -87,34 +89,49 @@ impl PackerBackend for BagArchive {
         metadata: std::fs::Metadata,
     ) -> anyhow::Result<()> {
         let header = FileHeader::new(&file.archive_path, metadata)?;
-        // println!("Created header");
-        // header.pprint();
-        // println!("Serializing header data..");
+        let file_size = header.file_size;
+        println!("Created header");
+        header.pprint();
+        println!("Serializing header data..");
         let header_block = header.serialize()?;
-        // println!("Writing header data..");
+        println!("Writing header data..");
         writer.write_all(&header_block.header)?;
-        // println!("Writing filename and linkname..");
+        println!("Writing filename and linkname..");
         writer.write_all(&header_block.file_name)?;
-        if !header_block.link_name.is_empty() {
-            writer.write_all(&header_block.link_name)?;
-        }
 
-        // println!("Open file for reading data..");
+        println!("Open file for reading data..");
         // open the current file for reading
         let file = File::open(&file.system_path)?;
         let mut reader = BufReader::new(file);
-        let mut buffer = [0u8; READ_BUFFER_SIZE]; // 8 KB buffer for efficient reading
-        loop {
-            let bytes_read = reader.read(&mut buffer)?;
-            // println!("Read {} bytes of data..", bytes_read);
-            if bytes_read == 0 {
-                break;
+        if file_size < READ_BUFFER_SIZE as u64 {
+            println!(
+                "File size is smaller than 8KB. So creating a buffer of size: {}",
+                file_size
+            );
+            let mut buffer = vec![0u8; file_size as usize];
+            reader
+                .read_exact(&mut buffer)
+                .with_context(|| "Reading exact file size")?;
+            writer.write_all(&buffer)?;
+            println!("Wrote data to file..");
+        } else {
+            let mut buffer = [0u8; READ_BUFFER_SIZE];
+            let mut total_bytes_read: u64 = 0;
+            while total_bytes_read < file_size {
+                let bytes_read = reader.read(&mut buffer)?;
+                println!("Read {} bytes of data..", bytes_read);
+                if bytes_read == 0 {
+                    assert_eq!(total_bytes_read, file_size);
+                    break;
+                }
+                writer.write_all(&buffer[..bytes_read])?;
+                println!("Wrote data to file..");
+                total_bytes_read += bytes_read as u64;
             }
-            let data = buffer
-                .into_iter()
-                .take_while(|c| *c != 0u8)
-                .collect::<Vec<_>>();
-            writer.write_all(&data)?;
+            println!(
+                "File size: {}. Total bytes read: {}",
+                file_size, total_bytes_read
+            );
         }
         Ok(())
     }
@@ -140,7 +157,7 @@ impl PackerBackend for BagArchive {
     ) -> anyhow::Result<FileHeader> {
         // 3. deserialize into header
         // 4. this gives all the file metadata.
-        let (mut header, filename_size, linkname_size) = FileHeader::deserialize(header_buffer)?;
+        let (mut header, filename_size) = FileHeader::deserialize(header_buffer)?;
         //println!("Parsed header: {:?}", header);
         //println!("Filename size: {:?}", filename_size);
         //println!("Link name size: {:?}", linkname_size);
@@ -149,19 +166,19 @@ impl PackerBackend for BagArchive {
         let mut filename_buffer = vec![0; filename_size as usize];
         reader.read_exact(&mut filename_buffer)?;
         // println!("file name raw: {:?}", filename_buffer);
-        header.file_name = bytes_to_path(&filename_buffer);
+        header.file_name = bytes_to_path(&filename_buffer)?;
         // println!("parsed filename: {:?}", header.file_name);
 
         // read the variable-length link name from the archive
-        let mut linkname_buffer = vec![0; linkname_size as usize];
-        reader.read_exact(&mut linkname_buffer)?;
-        // println!("link name raw: {:?}", linkname_buffer);
-        let linkname = bytes_to_path(&linkname_buffer);
-        header.link_name = if linkname.as_os_str().is_empty() {
-            None
-        } else {
-            Some(linkname)
-        };
+        //let mut linkname_buffer = vec![0; linkname_size as usize];
+        //reader.read_exact(&mut linkname_buffer)?;
+        //// println!("link name raw: {:?}", linkname_buffer);
+        //let linkname = bytes_to_path(&linkname_buffer);
+        //header.link_name = if linkname.as_os_str().is_empty() {
+        //    None
+        //} else {
+        //    Some(linkname)
+        //};
         // println!("parsed link name: {:?}", header.link_name);
 
         Ok(header)

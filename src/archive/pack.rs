@@ -3,7 +3,7 @@ use std::fs::{self};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
-use anyhow::{self, Context};
+use anyhow::{self, bail, Context};
 
 use crate::backend::{FilePath, PackerBackend};
 
@@ -51,8 +51,8 @@ fn process_file<T: PackerBackend>(
     writer: &mut BufWriter<File>,
     file_def: &FilePath,
 ) -> anyhow::Result<()> {
-    // println!("");
-    // println!("Processing file: {:?}", filepath);
+    println!();
+    println!("Processing file: {}", file_def.archive_path.display());
     // read file metadata
     let metadata = fs::metadata(&file_def.system_path)?;
 
@@ -75,6 +75,16 @@ fn process_file<T: PackerBackend>(
             });
         }
         process_files(packer, writer, &sub_paths)?;
+    } else if metadata.is_symlink() {
+        // TODO: to handle symlinks; one possible option -
+        // 1. Check if symlink target file is already in archive; then link to it, don't store the
+        // file data
+        // 2. If symlink file is not in archive; then copy data of the target file and turn this
+        // symlink to regular file (when unpacked)
+        bail!(
+            "Symlink file found: {}. Symlink files are not supported currently. Exiting.",
+            file_def.system_path.display()
+        )
     // if file is a regular file, then proceed with the base case
     } else {
         packer.pack_file(writer, file_def, metadata)?;
