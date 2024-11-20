@@ -32,13 +32,13 @@ pub trait PackerBackend {
     /// Write any prologue at the begining of the archive file.
     fn write_prologue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()>;
 
-    /// Pack a file to the writer.
-    fn pack_file(
+    /// Pack a header to the writer.
+    fn pack_header(
         &self,
         writer: &mut BufWriter<File>,
         file: &FilePath,
         metadata: fs::Metadata,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<u64>;
 
     /// Write any epilogue at the end of the archive file. For example, this can be used to write
     /// End Of Archive (EOF) markers.

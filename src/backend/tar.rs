@@ -7,7 +7,7 @@ mod header;
 
 use std::{
     fs::File,
-    io::{BufReader, BufWriter, Read, Write},
+    io::{BufReader, BufWriter, Write},
     path::PathBuf,
 };
 
@@ -15,8 +15,6 @@ use super::{AsHeader, PackerBackend};
 use anyhow;
 use header::Header;
 
-/// Read in 8KB of buffer for efficient reading, for large files.
-const READ_BUFFER_SIZE: usize = 8192;
 const EOF_MARKER: [u8; 1024] = [0; 1024];
 
 pub struct TarArchive;
@@ -45,33 +43,20 @@ impl PackerBackend for TarArchive {
         Ok(())
     }
 
-    fn pack_file(
+    fn pack_header(
         &self,
         writer: &mut BufWriter<File>,
         file: &super::FilePath,
         metadata: std::fs::Metadata,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<u64> {
         let header = Header::new(&file.archive_path, metadata)?;
+        let file_size = header.file_size;
         // println!("Created header: {:?}", header);
         // println!("Serializing header data..");
         let header_data = header.serialize()?;
         // println!("Writing header data..");
         writer.write_all(&header_data)?;
-
-        // println!("Open file for reading data..");
-        // open the current file for reading
-        let file = File::open(&file.system_path)?;
-        let mut reader = BufReader::new(file);
-        let mut buffer = [0u8; READ_BUFFER_SIZE]; // 8 KB buffer for efficient reading
-        loop {
-            let bytes_read = reader.read(&mut buffer)?;
-            // println!("Read {} bytes of data..", bytes_read);
-            if bytes_read == 0 {
-                break;
-            }
-            writer.write_all(&buffer[..bytes_read])?;
-        }
-        Ok(())
+        Ok(file_size)
     }
 
     fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {

@@ -5,10 +5,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
 
+use crate::archive::file::read_file_slice_chunked;
 use crate::backend::{AsHeader, PackerBackend};
-
-/// Read in 8KB of buffer for efficient reading, for large files.
-const READ_BUFFER_SIZE: usize = 8192;
 
 pub fn unpack<T: PackerBackend>(
     packer: &T,
@@ -86,47 +84,10 @@ fn process_file<T: PackerBackend>(
 
     // 8. read X number of bytes given by file size in metadata
     // 9. write those bytes into file created in 7.
-    // if file is smaller than `READ_BUFFER_SIZE`, read it all at one go.
-    if file_size < READ_BUFFER_SIZE as u64 {
-        println!(
-            "File size is smaller than 8KB. So creating a buffer of size: {}",
-            file_size
-        );
-        let mut buffer = vec![0u8; file_size as usize];
-        println!("Reading actual file data and writing to destination file");
-        reader
-            .read_exact(&mut buffer)
-            .with_context(|| "Reading exact file size")?;
-        writer.write_all(&buffer)?;
-        println!("Wrote data to file..");
-    // if file is bigger than `READ_BUFFER_SIZE`, read it in `READ_BUFFER_SIZE` chunks
-    } else {
-        let mut buffer = [0u8; READ_BUFFER_SIZE];
-        let mut total_bytes_read: u64 = 0;
-        let mut bytes_remaining = file_size;
-        println!("Reading actual file data and writing to destination file");
-
-        while bytes_remaining > 0 {
-            // if remaining bytes is smaller than chunk size, read those remaining bytes at one go.
-            if bytes_remaining < READ_BUFFER_SIZE as u64 {
-                let mut final_buffer = vec![0u8; bytes_remaining as usize];
-                reader.read_exact(&mut final_buffer)?;
-                writer.write_all(&final_buffer)?;
-                total_bytes_read += bytes_remaining;
-                bytes_remaining = 0;
-            // if remaining bytes is more than chunk size, read in chunk size
-            } else {
-                reader.read_exact(&mut buffer)?;
-                writer.write_all(&buffer)?;
-                bytes_remaining -= READ_BUFFER_SIZE as u64;
-                total_bytes_read += READ_BUFFER_SIZE as u64;
-            }
-        }
-        println!(
-            "File size: {}. Total bytes read: {}",
-            file_size, total_bytes_read
-        );
-    }
+    read_file_slice_chunked(reader, file_size, |data| {
+        writer.write_all(data)?;
+        Ok(())
+    })?;
     Ok(())
 }
 

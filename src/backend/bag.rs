@@ -49,8 +49,6 @@ use header::FileHeader;
 
 use super::{AsHeader, PackerBackend};
 
-/// Read in 8KB of buffer for efficient reading, for large files.
-const READ_BUFFER_SIZE: usize = 8192;
 const EOF_MARKER: [u8; 128] = [0; 128];
 
 pub struct BagArchive;
@@ -82,12 +80,12 @@ impl PackerBackend for BagArchive {
         Ok(())
     }
 
-    fn pack_file(
+    fn pack_header(
         &self,
         writer: &mut std::io::BufWriter<std::fs::File>,
         file: &super::FilePath,
         metadata: std::fs::Metadata,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<u64> {
         let header = FileHeader::new(&file.archive_path, metadata)?;
         let file_size = header.file_size;
         println!("Created header");
@@ -98,42 +96,7 @@ impl PackerBackend for BagArchive {
         writer.write_all(&header_block.header)?;
         println!("Writing filename and linkname..");
         writer.write_all(&header_block.file_name)?;
-
-        println!("Open file for reading data..");
-        // open the current file for reading
-        let file = File::open(&file.system_path)?;
-        let mut reader = BufReader::new(file);
-        if file_size < READ_BUFFER_SIZE as u64 {
-            println!(
-                "File size is smaller than 8KB. So creating a buffer of size: {}",
-                file_size
-            );
-            let mut buffer = vec![0u8; file_size as usize];
-            reader
-                .read_exact(&mut buffer)
-                .with_context(|| "Reading exact file size")?;
-            writer.write_all(&buffer)?;
-            println!("Wrote data to file..");
-        } else {
-            let mut buffer = [0u8; READ_BUFFER_SIZE];
-            let mut total_bytes_read: u64 = 0;
-            while total_bytes_read < file_size {
-                let bytes_read = reader.read(&mut buffer)?;
-                println!("Read {} bytes of data..", bytes_read);
-                if bytes_read == 0 {
-                    assert_eq!(total_bytes_read, file_size);
-                    break;
-                }
-                writer.write_all(&buffer[..bytes_read])?;
-                println!("Wrote data to file..");
-                total_bytes_read += bytes_read as u64;
-            }
-            println!(
-                "File size: {}. Total bytes read: {}",
-                file_size, total_bytes_read
-            );
-        }
-        Ok(())
+        Ok(file_size)
     }
 
     fn write_epilogue(&self, writer: &mut BufWriter<File>) -> anyhow::Result<()> {

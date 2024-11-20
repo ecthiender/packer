@@ -1,10 +1,11 @@
 use std::fs::File;
 use std::fs::{self};
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{self, bail, Context};
 
+use crate::archive::file::read_file_chunked;
 use crate::backend::{FilePath, PackerBackend};
 
 pub fn pack<T: PackerBackend>(
@@ -87,8 +88,16 @@ fn process_file<T: PackerBackend>(
         )
     // if file is a regular file, then proceed with the base case
     } else {
-        packer.pack_file(writer, file_def, metadata)?;
-    }
+        let file_size = packer.pack_header(writer, file_def, metadata)?;
+        // once header is packed; pack the source file into the archive.
 
+        // println!("Open file for reading data..");
+        // open the current file for reading
+        read_file_chunked(&file_def.system_path, file_size, |data| {
+            writer.write_all(data)?;
+            println!("Wrote data to file..");
+            Ok(())
+        })?;
+    }
     Ok(())
 }
