@@ -30,7 +30,15 @@ Then run it via `cargo run`, or use the executable in `target/` directly.
 ### To create an archive
 
 ```sh
-packer pack -i file1.txt some/path/file2.txt some/path/mydir /some/other/path/dir/mydir2 -o myarchive.bag
+packer pack -i /some/path/dir/mydir -o myarchive.bag
+```
+
+#### Multiple files and folders
+
+```sh
+packer pack \
+    -i file1.txt some/path/file2.txt some/path/mydir /some/other/path/dir/mydir2 \
+    -o myarchive.bag
 ```
 
 ### To extract from an archive
