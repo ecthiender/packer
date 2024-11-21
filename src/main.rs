@@ -31,7 +31,7 @@ enum Command {
     /// Pack up files to create an archive.
     Pack {
         /// List of files (i.e. their paths) to pack up.
-        #[arg(short, long, required(true), value_delimiter = ' ')]
+        #[arg(short, long, required(true), num_args(1..))]
         input_files: Vec<PathBuf>,
         /// Path to the output archive file.
         #[arg(short, long)]
