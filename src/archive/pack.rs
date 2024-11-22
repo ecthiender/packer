@@ -55,7 +55,12 @@ fn process_file<T: PackerBackend>(
 ) -> anyhow::Result<()> {
     debug!("Processing file: {}", file_def.archive_path.display());
     // read file metadata
-    let metadata = fs::metadata(&file_def.system_path)?;
+    let metadata = fs::symlink_metadata(&file_def.system_path).with_context(|| {
+        format!(
+            "Unable to read metadata of: {}",
+            file_def.system_path.display()
+        )
+    })?;
 
     // if the file is a directory, get the top-level files, and recursively
     // process those files.
@@ -76,19 +81,31 @@ fn process_file<T: PackerBackend>(
             });
         }
         process_files(packer, writer, &sub_paths)?;
+    // if file is a symlink
     } else if metadata.is_symlink() {
-        // TODO: to handle symlinks; one possible option -
-        // 1. Check if symlink target file is already in archive; then link to it, don't store the
-        // file data
-        // 2. If symlink file is not in archive; then copy data of the target file and turn this
-        // symlink to regular file (when unpacked)
-        bail!(
-            "Symlink file found: {}. Symlink files are not supported currently. Exiting.",
-            file_def.system_path.display()
-        )
+        // To handle symlinks; two possible options -
+        // ### Tar style
+        // - During archive creation - it stores only the target name of the symlink and symlink
+        // metadata.
+        // - During extraction - it creates a symlink in destination and sets the target to stored
+        // one. If the target file actually exists (and thus the symlink is invalid) in the sytem is
+        // ignored.
+        //
+        // ### Packer style
+        // - During create archive - check if symlink target file is already in archive -
+        //   1. If yes, then just link to it.
+        //   2. If no,then copy data of the target file into the archive.
+        // - During extraction -
+        //   1. case 1 -  remains as is.
+        //   2. case 2 - turn this to a regular file when unpacked.
+        // --------
+        // Going for TAR style as the first implementation.
+        dbg!(&metadata);
+        let target = fs::read_link(&file_def.system_path)?;
+        let _file_size = packer.pack_header(writer, file_def, metadata, Some(target))?;
     // if file is a regular file, then proceed with the base case
-    } else {
-        let file_size = packer.pack_header(writer, file_def, metadata)?;
+    } else if metadata.is_file() {
+        let file_size = packer.pack_header(writer, file_def, metadata, None)?;
         // once header is packed; pack the source file into the archive.
 
         // trace!("Open file for reading data..");
@@ -98,6 +115,8 @@ fn process_file<T: PackerBackend>(
             trace!("Wrote data to file..");
             Ok(())
         })?;
+    } else {
+        bail!("Unknown file type. Only regular files, directories and symlinks are supported.");
     }
     Ok(())
 }

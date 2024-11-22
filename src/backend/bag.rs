@@ -38,14 +38,15 @@ pub mod header;
 use std::{
     fs::File,
     io::{BufReader, BufWriter, Read, Write},
+    path::PathBuf,
 };
 
 use anyhow::{self, Context};
 
 use byteorder::bytes_to_path;
 use global_header::GlobalHeader;
-use header::FileHeader;
-use log::trace;
+use header::{FileHeader, TypeFlag};
+use log::{debug, trace};
 
 use super::{AsHeader, PackerBackend};
 
@@ -90,8 +91,9 @@ impl PackerBackend for BagArchive {
         writer: &mut std::io::BufWriter<std::fs::File>,
         file: &super::FilePath,
         metadata: std::fs::Metadata,
+        link_name: Option<PathBuf>,
     ) -> anyhow::Result<u64> {
-        let header = FileHeader::new(&file.archive_path, metadata)?;
+        let header = FileHeader::new(&file.archive_path, metadata, link_name)?;
         let file_size = header.file_size;
         trace!("Created header");
         header.pprint();
@@ -101,6 +103,7 @@ impl PackerBackend for BagArchive {
         writer.write_all(&header_block.header)?;
         trace!("Writing filename and linkname..");
         writer.write_all(&header_block.file_name)?;
+        writer.write_all(&header_block.link_name)?;
         Ok(file_size)
     }
 
@@ -125,29 +128,28 @@ impl PackerBackend for BagArchive {
     ) -> anyhow::Result<FileHeader> {
         // 3. deserialize into header
         // 4. this gives all the file metadata.
-        let (mut header, filename_size) = FileHeader::deserialize(header_buffer)?;
-        //debug!("Parsed header: {:?}", header);
-        //debug!("Filename size: {:?}", filename_size);
-        //debug!("Link name size: {:?}", linkname_size);
+        let (mut header, filename_size, linkname_size) = FileHeader::deserialize(header_buffer)?;
+        debug!("Parsed header: {:?}", header);
+        debug!("Filename size: {:?}", filename_size);
+        debug!("Link name size: {:?}", linkname_size);
 
         // read the variable-length filename from the archive
         let mut filename_buffer = vec![0; filename_size as usize];
         reader.read_exact(&mut filename_buffer)?;
-        // trace!("file name raw: {:?}", filename_buffer);
+        trace!("file name raw: {:?}", filename_buffer);
         header.file_name = bytes_to_path(&filename_buffer)?;
-        // debug!("parsed filename: {:?}", header.file_name);
+        debug!("parsed filename: {:?}", header.file_name);
 
-        // read the variable-length link name from the archive
-        //let mut linkname_buffer = vec![0; linkname_size as usize];
-        //reader.read_exact(&mut linkname_buffer)?;
-        //// trace!("link name raw: {:?}", linkname_buffer);
-        //let linkname = bytes_to_path(&linkname_buffer);
-        //header.link_name = if linkname.as_os_str().is_empty() {
-        //    None
-        //} else {
-        //    Some(linkname)
-        //};
-        // debug!("parsed link name: {:?}", header.link_name);
+        if header.type_flag == TypeFlag::SymLink {
+            // read the variable-length link name from the archive
+            let mut linkname_buffer = vec![0; linkname_size as usize];
+            reader.read_exact(&mut linkname_buffer)?;
+            trace!("link name raw: {:?}", linkname_buffer);
+            let linkname = bytes_to_path(&linkname_buffer)?;
+            let linkname_exists = !linkname.as_os_str().is_empty();
+            header.link_name = linkname_exists.then_some(linkname);
+            debug!("Parsed link name: {:?}", header.link_name);
+        }
 
         Ok(header)
     }

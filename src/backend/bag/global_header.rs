@@ -11,7 +11,7 @@ pub struct GlobalHeader {
     version: FormatVersion,
 }
 
-const PREAMBLE: &str = "BAG Archive Format. By Packer. (c) Anon Ray.";
+const PREAMBLE: &str = "BAG AF.";
 
 impl GlobalHeader {
     pub fn new() -> Self {
@@ -60,17 +60,17 @@ impl FormatVersion {
 /// the block size of 64 bytes. Headers are read/written as this block of 64 bytes.
 #[derive(Debug)]
 struct GlobalHeaderLL {
-    /// A static string. Always: "BAG Archive Format. By Packer. (c) Anon Ray."
-    preamble: [u8; 44],
+    /// A static string. Always: "BAG AF."
+    preamble: [u8; 7],
     /// Version of the format used. Reserved for future changes.
     version: u8,
 }
 
 impl GlobalHeaderLL {
     pub fn new(header: GlobalHeader) -> Self {
-        let mut buffer = [0u8; 44]; // Initialize a fixed-size array with zeros
+        let mut buffer = [0u8; 7]; // Initialize a fixed-size array with zeros
         let bytes = header.preamble.as_bytes();
-        let len = bytes.len().min(44); // Determine how much to copy
+        let len = bytes.len().min(7); // Determine how much to copy
         buffer[..len].copy_from_slice(&bytes[..len]); // Copy bytes into the buffer
         Self {
             preamble: buffer,
@@ -84,7 +84,7 @@ impl GlobalHeaderLL {
         data_buffer.write_all(&[self.version])?;
 
         let mut buffer = [0u8; 64];
-        buffer[..45].copy_from_slice(&data_buffer);
+        buffer[..8].copy_from_slice(&data_buffer);
 
         Ok(buffer)
     }
@@ -93,8 +93,8 @@ impl GlobalHeaderLL {
         if bytes.len() != 64 {
             bail!("Invalid header block length: {}; expected 64.", bytes.len());
         }
-        let preamble = bytes[0..44].try_into().unwrap();
-        let version = bytes[44];
+        let preamble = bytes[0..7].try_into().unwrap();
+        let version = bytes[7];
         Ok(Self { preamble, version })
     }
 }

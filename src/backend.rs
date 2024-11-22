@@ -51,6 +51,8 @@ pub trait PackerBackend {
         writer: &mut BufWriter<File>,
         file: &FilePath,
         metadata: fs::Metadata,
+        // only set if the file is a symlink
+        link_name: Option<PathBuf>,
     ) -> anyhow::Result<u64>;
 
     /// Write any epilogue at the end of the archive file. For example, this can be used to write

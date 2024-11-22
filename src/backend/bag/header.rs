@@ -14,10 +14,11 @@
  * | <ctime>           |  8            |  28    |  Created time of file                              |
  * | <mtime>           |  8            |  36    |  Last modified time of file                        |
  * | <type-flag>       |  1            |  44    |  Flag indicating file type                         |
- * | <checksum>        |  4            |  45    |  Checksum of this header, with null checksum field |
+ * | <link-name-size>  |  8            |  45    |  Link name if file is symlink                      |
+ * | <checksum>        |  4            |  53    |  Checksum of this header, with null checksum field |
  * +-------------------+---------------+--------+----------------------------------------------------+
  *
- * This header data is of 49 bytes. But a header block is treated as 64 bytes block. After 49 bytes,
+ * This header data is of 57 bytes. But a header block is treated as 64 bytes block. After 57 bytes,
  * the block is padded with 0. Headers should be written and read as this block of 64 bytes.
  *
  * Layout of file header, file name and file data -
@@ -45,6 +46,7 @@ use crate::backend::bag::byteorder::{
 pub struct HeaderBlock {
     pub header: [u8; 64],
     pub file_name: Vec<u8>,
+    pub link_name: Vec<u8>,
 }
 
 /// The binary layout of the File Header. This is what is actually stored in the archive.
@@ -59,6 +61,8 @@ pub struct FileHeaderLL {
     pub created_at: [u8; 8],
     pub last_modified: [u8; 8],
     pub type_flag: u8,
+    pub link_name: Vec<u8>,
+    pub link_name_size: [u8; 8],
     pub checksum: [u8; 4],
 }
 
@@ -66,10 +70,26 @@ impl FileHeaderLL {
     pub fn new(header: FileHeader) -> anyhow::Result<Self> {
         let file_name_bytes = path_to_bytes(header.file_name)?;
         let file_name_size: u64 = safe_usize_to_u64(file_name_bytes.len())?;
-        //debug!(
-        //    ">>>> File name: {:?}; file name size: {:?}",
-        //    file_name_bytes, file_name_size
-        //);
+        trace!(
+            ">>>> File name: {:?}; file name size: {:?}",
+            file_name_bytes,
+            file_name_size
+        );
+        let (link_name_bytes, link_name_size) = header
+            .link_name
+            .map(|link_name| {
+                let link_name_bytes = path_to_bytes(link_name)?;
+                let link_name_size = safe_usize_to_u64(link_name_bytes.len())?;
+                Ok::<_, anyhow::Error>((link_name_bytes, link_name_size))
+            })
+            .transpose()?
+            .unwrap_or_default();
+        trace!(
+            ">>>> Link name: {:?}; link name size: {:?}",
+            link_name_bytes,
+            link_name_size
+        );
+
         Ok(Self {
             file_name: file_name_bytes,
             file_name_size: u64_to_bytes(file_name_size),
@@ -80,6 +100,8 @@ impl FileHeaderLL {
             created_at: i64_to_bytes(header.created_at),
             last_modified: i64_to_bytes(header.last_modified),
             type_flag: header.type_flag as u8,
+            link_name: link_name_bytes,
+            link_name_size: u64_to_bytes(link_name_size),
             checksum: [0u8; 4],
         })
     }
@@ -100,10 +122,11 @@ impl FileHeaderLL {
     pub fn serialize(self) -> anyhow::Result<HeaderBlock> {
         let mut buffer = [0u8; 64];
         let bytes = self.to_bytes()?;
-        buffer[..49].copy_from_slice(&bytes);
+        buffer[..57].copy_from_slice(&bytes);
         Ok(HeaderBlock {
             header: buffer,
             file_name: self.file_name,
+            link_name: self.link_name,
         })
     }
 
@@ -117,6 +140,7 @@ impl FileHeaderLL {
         buffer.write_all(&self.created_at)?;
         buffer.write_all(&self.last_modified)?;
         buffer.write_all(&[self.type_flag])?;
+        buffer.write_all(&self.link_name_size)?;
         buffer.write_all(&self.checksum)?;
         Ok(buffer)
     }
@@ -133,7 +157,8 @@ impl FileHeaderLL {
         let created_at = bytes[28..36].try_into().unwrap();
         let last_modified = bytes[36..44].try_into().unwrap();
         let type_flag = bytes[44];
-        let checksum = bytes[45..49].try_into().unwrap();
+        let link_name_size = bytes[45..53].try_into().unwrap();
+        let checksum = bytes[53..57].try_into().unwrap();
 
         Ok(Self {
             file_name: Vec::new(),
@@ -145,6 +170,8 @@ impl FileHeaderLL {
             created_at,
             last_modified,
             type_flag,
+            link_name: Vec::new(),
+            link_name_size,
             checksum,
         })
     }
@@ -174,7 +201,11 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn new(file_name: &Path, metadata: fs::Metadata) -> anyhow::Result<Self> {
+    pub fn new(
+        file_name: &Path,
+        metadata: fs::Metadata,
+        link_name: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let file_name = file_name.to_owned();
         let file_mode = metadata.mode();
         let user_id = metadata.uid();
@@ -192,8 +223,7 @@ impl FileHeader {
             created_at,
             last_modified,
             type_flag,
-            // TODO: handle links
-            link_name: None,
+            link_name,
         })
     }
 
@@ -229,7 +259,7 @@ impl FileHeader {
         header_ll.serialize()
     }
 
-    pub fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64)> {
+    pub fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64, u64)> {
         let mut ll = FileHeaderLL::from_bytes(bytes)?;
         trace!("Low-level file header : {:?}", ll);
         // get the stored checksum
@@ -259,7 +289,11 @@ impl FileHeader {
             type_flag,
             link_name: None,
         };
-        Ok((header, bytes_to_u64(ll.file_name_size)))
+        Ok((
+            header,
+            bytes_to_u64(ll.file_name_size),
+            bytes_to_u64(ll.link_name_size),
+        ))
     }
 }
 
@@ -367,7 +401,7 @@ mod tests {
             .with_context(|| "Failed to serialize header")?;
 
         // Deserialize the header
-        let (deserialized_header, _) = FileHeader::deserialize(&serialized_header.header)?;
+        let (deserialized_header, _, _) = FileHeader::deserialize(&serialized_header.header)?;
         // Assert that the original and deserialized headers are equal
         assert_eq!(header.file_size, deserialized_header.file_size);
         assert_eq!(header.file_mode, deserialized_header.file_mode);

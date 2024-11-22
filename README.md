@@ -14,16 +14,15 @@ This is just for fun. I wanted to play with writing a low-level tool dealing wit
 formats. It started out with being a tar clone. But in the process I thought I could come with a
 better format.
 
-## Download
+## Install
 
 - git clone this repo
-- build it
-
-```sh
-cargo build
-```
-
-Then run it via `cargo run`, or use the executable in `target/` directly.
+- make sure you have `rustup` installed
+- make sure you have the correct rust dependencies - `rustup show` (this will install/update any
+  missing dependencies)
+- build it - `cargo build --release`
+- cp `./target/release/packer` somewhere that's accessible in your `PATH`
+- then you can run the `packer` command from anywhere
 
 ## Usage
 

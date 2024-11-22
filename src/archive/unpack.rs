@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
 use filetime::FileTime;
-use log::{debug, trace};
+use log::{debug, trace, warn};
 use nix::unistd;
 
 use crate::archive::file::read_file_slice_chunked;
@@ -88,14 +88,28 @@ fn process_file<T: PackerBackend>(
     let mut writer = BufWriter::new(file);
     trace!("File size {}.", metadata.file_size);
 
-    // 8. read X number of bytes given by file size in metadata
-    // 9. write those bytes into file created in 7.
-    read_file_slice_chunked(reader, metadata.file_size, |data| {
-        writer.write_all(data)?;
-        Ok(())
-    })?;
+    // 7.1. if file is a symlink, set up a symlink
+    if let Some(link_name) = metadata.link_name {
+        if let Err(err) = create_symlink(&link_name, &filepath) {
+            warn!(
+                "Unable to set up symlink: '{} -> {}'. Error: {}",
+                filepath.display(),
+                link_name.display(),
+                err
+            );
+            warn!("Symlink file created with invalid target.");
+        }
+    // 7.2. else process the file data from archive
+    } else {
+        // 8. read X number of bytes given by file size in metadata; write those bytes into file
+        // created in 6.
+        read_file_slice_chunked(reader, metadata.file_size, |data| {
+            writer.write_all(data)?;
+            Ok(())
+        })?;
+    }
 
-    // 10. set file metadata
+    // 9. set file metadata
     // Set permissions
     let mut permissions = fs::metadata(&filepath)?.permissions();
     permissions.set_mode(metadata.file_mode);
@@ -127,4 +141,16 @@ fn parse_path(path: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
         ancestors.swap_remove(1)
     };
     Ok((filename, dirs_path))
+}
+
+#[cfg(unix)]
+fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> anyhow::Result<()> {
+    std::os::unix::fs::symlink(original, link)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> anyhow::Result<()> {
+    std::os::windows::fs::symlink_file(original, link)?;
+    Ok(())
 }

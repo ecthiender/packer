@@ -8,6 +8,7 @@ mod header;
 use std::{
     fs::File,
     io::{BufReader, BufWriter, Write},
+    path::PathBuf,
 };
 
 use super::{AsHeader, PackerBackend};
@@ -52,6 +53,7 @@ impl PackerBackend for TarArchive {
         writer: &mut BufWriter<File>,
         file: &super::FilePath,
         metadata: std::fs::Metadata,
+        _link_name: Option<PathBuf>,
     ) -> anyhow::Result<u64> {
         let header = Header::new(&file.archive_path, metadata)?;
         let file_size = header.file_size;

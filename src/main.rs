@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{self, bail};
 use clap::{Parser, Subcommand};
+use colog::format::CologStyle;
 use log::info;
 
 use backend::bag::BagArchive;
@@ -65,12 +66,27 @@ enum LogLevel {
     Trace,
 }
 
+pub struct LevelDisplay;
+
+impl CologStyle for LevelDisplay {
+    fn level_token(&self, level: &log::Level) -> &str {
+        match *level {
+            log::Level::Error => "ERROR",
+            log::Level::Warn => "WARN",
+            log::Level::Info => "INFO",
+            log::Level::Debug => "DEBUG",
+            log::Level::Trace => "TRACE",
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     // parse CLI arguments
     let cli = Cli::parse();
 
     // intialise the logger
     let mut clog = colog::default_builder();
+    clog.format(colog::formatter(LevelDisplay));
     clog.filter(None, mk_log_level_filter(cli.level));
     clog.init();
 
