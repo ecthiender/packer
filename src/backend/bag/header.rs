@@ -35,7 +35,6 @@ use std::{fs, os::unix::fs::MetadataExt, path::Path, path::PathBuf};
 use anyhow::anyhow;
 use anyhow::bail;
 use crc_any::CRCu32;
-use log::{debug, trace};
 
 use crate::backend::bag::byteorder::{
     bytes_to_i64, bytes_to_path, bytes_to_u32, bytes_to_u64, i64_to_bytes, path_to_bytes,
@@ -70,7 +69,7 @@ impl FileHeaderLL {
     pub fn new(header: FileHeader) -> anyhow::Result<Self> {
         let file_name_bytes = path_to_bytes(header.file_name)?;
         let file_name_size: u64 = safe_usize_to_u64(file_name_bytes.len())?;
-        trace!(
+        log::trace!(
             ">>>> File name: {:?}; file name size: {:?}",
             file_name_bytes,
             file_name_size
@@ -84,7 +83,7 @@ impl FileHeaderLL {
             })
             .transpose()?
             .unwrap_or_default();
-        trace!(
+        log::trace!(
             ">>>> Link name: {:?}; link name size: {:?}",
             link_name_bytes,
             link_name_size
@@ -229,39 +228,39 @@ impl FileHeader {
 
     #[allow(dead_code)]
     pub fn pprint(&self) {
-        debug!("File metadata");
-        debug!("-------------");
-        debug!(">> name: {}", self.file_name.display());
-        debug!(">> size: {}", self.file_size);
-        debug!(">> mode: {}", self.file_mode);
-        debug!(">> uid: {}", self.user_id);
-        debug!(">> gid: {}", self.group_id);
-        debug!(">> ctime: {}", self.created_at);
-        debug!(">> mtime: {}", self.last_modified);
-        debug!(">> typeflag: {:?}", self.type_flag);
-        debug!(
+        log::debug!("File metadata");
+        log::debug!("-------------");
+        log::debug!(">> name: {}", self.file_name.display());
+        log::debug!(">> size: {}", self.file_size);
+        log::debug!(">> mode: {}", self.file_mode);
+        log::debug!(">> uid: {}", self.user_id);
+        log::debug!(">> gid: {}", self.group_id);
+        log::debug!(">> ctime: {}", self.created_at);
+        log::debug!(">> mtime: {}", self.last_modified);
+        log::debug!(">> typeflag: {:?}", self.type_flag);
+        log::debug!(
             ">> link name: {}",
             self.link_name
                 .as_ref()
                 .map(|ln| ln.display().to_string())
                 .unwrap_or("<N/A>".to_string())
         );
-        debug!("-------------");
+        log::debug!("-------------");
     }
 
     pub fn serialize(self) -> anyhow::Result<HeaderBlock> {
         let mut header_ll = FileHeaderLL::new(self)?;
-        // trace!("Constructed raw header: {:?}", header_ll);
+        // log::trace!("Constructed raw header: {:?}", header_ll);
         let checksum = header_ll.calculate_checksum()?;
-        // debug!("Calculated checksum: {}", checksum);
+        // log::debug!("Calculated checksum: {}", checksum);
         header_ll.set_checksum(checksum);
-        // trace!("Constructed raw header: {:?}", header_ll);
+        // log::trace!("Constructed raw header: {:?}", header_ll);
         header_ll.serialize()
     }
 
     pub fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64, u64)> {
         let mut ll = FileHeaderLL::from_bytes(bytes)?;
-        trace!("Low-level file header : {:?}", ll);
+        log::trace!("Low-level file header : {:?}", ll);
         // get the stored checksum
         let stored_checksum = bytes_to_u32(ll.checksum);
         // set the checksum to empty in low-level header object

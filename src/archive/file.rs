@@ -5,7 +5,6 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 
 use anyhow::Context;
-use log::{debug, trace};
 
 /// Read in 8KB of buffer for efficient reading, for large files.
 const READ_BUFFER_SIZE: usize = 8192;
@@ -19,7 +18,7 @@ where
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     if file_size < READ_BUFFER_SIZE as u64 {
-        debug!(
+        log::debug!(
             "File size is smaller than 8KB. So creating a buffer of size: {}",
             file_size
         );
@@ -28,24 +27,25 @@ where
             .read_exact(&mut buffer)
             .with_context(|| "Reading exact file size")?;
         callback(&buffer)?;
-        trace!("Called callback..");
+        log::trace!("Called callback..");
     } else {
         let mut buffer = [0u8; READ_BUFFER_SIZE];
         let mut total_bytes_read: u64 = 0;
         while total_bytes_read < file_size {
             let bytes_read = reader.read(&mut buffer)?;
-            trace!("Read {} bytes of data..", bytes_read);
+            log::trace!("Read {} bytes of data..", bytes_read);
             if bytes_read == 0 {
                 assert_eq!(total_bytes_read, file_size);
                 break;
             }
             callback(&buffer[..bytes_read])?;
-            trace!("Called callback..");
+            log::trace!("Called callback..");
             total_bytes_read += bytes_read as u64;
         }
-        debug!(
+        log::debug!(
             "File size: {}. Total bytes read: {}",
-            file_size, total_bytes_read
+            file_size,
+            total_bytes_read
         );
     }
     Ok(())
@@ -62,23 +62,23 @@ where
     F: FnMut(&[u8]) -> anyhow::Result<()>,
 {
     if bytes_to_read < READ_BUFFER_SIZE as u64 {
-        debug!(
+        log::debug!(
             "File size is smaller than 8KB. So creating a buffer of size: {}",
             bytes_to_read
         );
         let mut buffer = vec![0u8; bytes_to_read as usize];
-        trace!("Reading actual file data and writing to destination file");
+        log::trace!("Reading actual file data and writing to destination file");
         reader
             .read_exact(&mut buffer)
             .with_context(|| "Reading exact file size")?;
         callback(&buffer)?;
-        trace!("Called callback.");
+        log::trace!("Called callback.");
     // if file is bigger than `READ_BUFFER_SIZE`, read it in `READ_BUFFER_SIZE` chunks
     } else {
         let mut buffer = [0u8; READ_BUFFER_SIZE];
         let mut total_bytes_read: u64 = 0;
         let mut bytes_remaining = bytes_to_read;
-        trace!("Reading actual file data and writing to destination file");
+        log::trace!("Reading actual file data and writing to destination file");
 
         while bytes_remaining > 0 {
             // if remaining bytes is smaller than chunk size, read those remaining bytes at one go.
@@ -96,9 +96,10 @@ where
                 total_bytes_read += READ_BUFFER_SIZE as u64;
             }
         }
-        debug!(
+        log::debug!(
             "File size: {}. Total bytes read: {}",
-            bytes_to_read, total_bytes_read
+            bytes_to_read,
+            total_bytes_read
         );
     }
     Ok(())

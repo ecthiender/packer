@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
 use filetime::FileTime;
-use log::{debug, trace, warn};
 use nix::unistd;
 
 use crate::archive::file::read_file_slice_chunked;
@@ -26,7 +25,7 @@ pub fn unpack<T: PackerBackend>(
     let mut header_buffer = vec![0u8; packer.header_block_size()];
     loop {
         // 2. read first `block_size` bytes; this is the header
-        trace!("Reading {} bytes as header", packer.header_block_size());
+        log::trace!("Reading {} bytes as header", packer.header_block_size());
         reader
             .read_exact(&mut header_buffer)
             .with_context(|| "Reading header")?;
@@ -35,7 +34,7 @@ pub fn unpack<T: PackerBackend>(
         if packer.is_eoa(&mut reader, &header_buffer) {
             // if we see 512 bytes with 0s, read another 512 bytes block and
             // they should also be 0s to ensure we have reached EOF.
-            // trace!(">>EOA<<");
+            // log::trace!(">>EOA<<");
             break;
         }
         process_file(packer, &mut reader, &header_buffer, &output_path)?;
@@ -55,9 +54,9 @@ fn process_file<T: PackerBackend>(
 
     // 4. parse path to check if this directory; if yes you get a list of dirs and a filepath,
     // otherwise only a filepath
-    trace!("Parsed header for file : {:?}", metadata.file_name);
+    log::trace!("Parsed header for file : {:?}", metadata.file_name);
     let (filename, parent_dirs) = parse_path(&metadata.file_name)?;
-    trace!(
+    log::trace!(
         "Parsed path and parent dirs : {} - {}",
         filename.display(),
         parent_dirs.display()
@@ -71,7 +70,7 @@ fn process_file<T: PackerBackend>(
     } else {
         final_path = output_path.to_path_buf();
     }
-    debug!(
+    log::debug!(
         "Writing file {} to path: {}",
         filename.display(),
         final_path.display()
@@ -79,25 +78,25 @@ fn process_file<T: PackerBackend>(
 
     // 6. create an empty file with the above metadata, in the correct path location
     let filepath = final_path.join(filename);
-    trace!("Effective destination file path: {}", filepath.display());
+    log::trace!("Effective destination file path: {}", filepath.display());
     let file = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(&filepath)?;
     let mut writer = BufWriter::new(file);
-    trace!("File size {}.", metadata.file_size);
+    log::trace!("File size {}.", metadata.file_size);
 
     // 7.1. if file is a symlink, set up a symlink
     if let Some(link_name) = metadata.link_name {
         if let Err(err) = create_symlink(&link_name, &filepath) {
-            warn!(
+            log::warn!(
                 "Unable to set up symlink: '{} -> {}'. Error: {}",
                 filepath.display(),
                 link_name.display(),
                 err
             );
-            warn!("Symlink file created with invalid target.");
+            log::warn!("Symlink file created with invalid target.");
         }
     // 7.2. else process the file data from archive
     } else {

@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use anyhow::{self, bail};
 use clap::{Parser, Subcommand};
 use colog::format::CologStyle;
-use log::info;
 
 use backend::bag::BagArchive;
 use backend::tar::TarArchive;
@@ -99,7 +98,7 @@ fn main() -> anyhow::Result<()> {
                 bail!("No input files provided. Atleast one input file is required.");
             }
 
-            info!(
+            log::info!(
                 "Creating an archive at {}, for files: {}",
                 output_path.display(),
                 input_files
@@ -118,7 +117,7 @@ fn main() -> anyhow::Result<()> {
                     archive::pack(&packer, output_path, &input_files)?;
                 }
             }
-            info!("Done.");
+            log::info!("Done.");
         }
         Command::Unpack {
             input_path,
@@ -130,7 +129,7 @@ fn main() -> anyhow::Result<()> {
             if !output_path.is_dir() {
                 bail!("Output path has to be a directory where all contents of the archive will be unpacked.");
             }
-            info!(
+            log::info!(
                 "Unpacking archive {} into destination directory: {}",
                 input_path.display(),
                 output_path.display()
@@ -145,7 +144,7 @@ fn main() -> anyhow::Result<()> {
                     archive::unpack(&packer, input_path, output_path)?;
                 }
             }
-            info!("Done.");
+            log::info!("Done.");
         }
     }
 
