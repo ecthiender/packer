@@ -43,30 +43,30 @@ use crate::backend::bag::byteorder::{
 
 #[derive(Debug)]
 pub struct HeaderBlock {
-    pub header: [u8; 64],
-    pub file_name: Vec<u8>,
-    pub link_name: Vec<u8>,
+    pub(crate) header: [u8; 64],
+    pub(crate) file_name: Vec<u8>,
+    pub(crate) link_name: Vec<u8>,
 }
 
 /// The binary layout of the File Header. This is what is actually stored in the archive.
 #[derive(Debug)]
-pub struct FileHeaderLL {
-    pub file_name: Vec<u8>,
-    pub file_name_size: [u8; 8],
-    pub file_size: [u8; 8],
-    pub file_mode: [u8; 4],
-    pub user_id: [u8; 4],
-    pub group_id: [u8; 4],
-    pub created_at: [u8; 8],
-    pub last_modified: [u8; 8],
-    pub type_flag: u8,
-    pub link_name: Vec<u8>,
-    pub link_name_size: [u8; 8],
-    pub checksum: [u8; 4],
+struct FileHeaderLL {
+    file_name: Vec<u8>,
+    file_name_size: [u8; 8],
+    file_size: [u8; 8],
+    file_mode: [u8; 4],
+    user_id: [u8; 4],
+    group_id: [u8; 4],
+    created_at: [u8; 8],
+    last_modified: [u8; 8],
+    type_flag: u8,
+    link_name: Vec<u8>,
+    link_name_size: [u8; 8],
+    checksum: [u8; 4],
 }
 
 impl FileHeaderLL {
-    pub fn new(header: FileHeader) -> anyhow::Result<Self> {
+    fn new(header: FileHeader) -> anyhow::Result<Self> {
         let file_name_bytes = path_to_bytes(header.file_name)?;
         let file_name_size: u64 = safe_usize_to_u64(file_name_bytes.len())?;
         log::trace!(
@@ -106,19 +106,19 @@ impl FileHeaderLL {
     }
 
     /// calculate the checksum of this header; this assumes the checksum field is set to 0
-    pub fn calculate_checksum(&self) -> anyhow::Result<u32> {
+    fn calculate_checksum(&self) -> anyhow::Result<u32> {
         let mut crc = CRCu32::crc32();
         let serialized = self.to_bytes()?;
         crc.digest(&serialized);
         Ok(crc.get_crc())
     }
 
-    pub fn set_checksum(&mut self, checksum: u32) {
+    fn set_checksum(&mut self, checksum: u32) {
         self.checksum = u32_to_bytes(checksum);
     }
 
     /// Serialize the header into a 64 bytes block byte array.
-    pub fn serialize(self) -> anyhow::Result<HeaderBlock> {
+    fn serialize(self) -> anyhow::Result<HeaderBlock> {
         let mut buffer = [0u8; 64];
         let bytes = self.to_bytes()?;
         buffer[..57].copy_from_slice(&bytes);
@@ -144,7 +144,7 @@ impl FileHeaderLL {
         Ok(buffer)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+    fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         if bytes.len() != 64 {
             bail!("Invalid header block length: {}; expected 64.", bytes.len());
         }
@@ -188,19 +188,19 @@ fn safe_usize_to_u64(value: usize) -> anyhow::Result<u64> {
 /// program.
 #[derive(Debug, Clone)]
 pub struct FileHeader {
-    pub file_name: PathBuf,
-    pub file_size: u64,
-    pub file_mode: u32,
-    pub user_id: u32,
-    pub group_id: u32,
-    pub created_at: i64,
-    pub last_modified: i64,
-    pub type_flag: TypeFlag,
-    pub link_name: Option<PathBuf>,
+    pub(crate) file_name: PathBuf,
+    pub(crate) file_size: u64,
+    pub(crate) file_mode: u32,
+    pub(crate) user_id: u32,
+    pub(crate) group_id: u32,
+    pub(crate) created_at: i64,
+    pub(crate) last_modified: i64,
+    pub(crate) type_flag: TypeFlag,
+    pub(crate) link_name: Option<PathBuf>,
 }
 
 impl FileHeader {
-    pub fn new(
+    pub(crate) fn new(
         file_name: &Path,
         metadata: fs::Metadata,
         link_name: Option<PathBuf>,
@@ -226,8 +226,7 @@ impl FileHeader {
         })
     }
 
-    #[allow(dead_code)]
-    pub fn pprint(&self) {
+    pub(crate) fn pprint(&self) {
         log::debug!("File metadata");
         log::debug!("-------------");
         log::debug!(">> name: {}", self.file_name.display());
@@ -248,7 +247,7 @@ impl FileHeader {
         log::debug!("-------------");
     }
 
-    pub fn serialize(self) -> anyhow::Result<HeaderBlock> {
+    pub(crate) fn serialize(self) -> anyhow::Result<HeaderBlock> {
         let mut header_ll = FileHeaderLL::new(self)?;
         // log::trace!("Constructed raw header: {:?}", header_ll);
         let checksum = header_ll.calculate_checksum()?;
@@ -258,7 +257,7 @@ impl FileHeader {
         header_ll.serialize()
     }
 
-    pub fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64, u64)> {
+    pub(crate) fn deserialize(bytes: &[u8]) -> anyhow::Result<(Self, u64, u64)> {
         let mut ll = FileHeaderLL::from_bytes(bytes)?;
         log::trace!("Low-level file header : {:?}", ll);
         // get the stored checksum
@@ -270,7 +269,7 @@ impl FileHeader {
         // check if checksum matches
         if calc_checksum != stored_checksum {
             bail!(
-                "ERROR: Checksums don't match for file {}. This means that the BAG archive has corrupted data. Stored checksum: {}, calculated checksum: {}",
+                "Checksums don't match for file {}. This means that the BAG archive has corrupted data. Stored checksum: {}, calculated checksum: {}",
                 bytes_to_path(&ll.file_name)?.display(),
                 stored_checksum,
                 calc_checksum

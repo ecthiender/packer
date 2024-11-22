@@ -99,7 +99,6 @@ fn process_file<T: PackerBackend>(
         //   2. case 2 - turn this to a regular file when unpacked.
         // --------
         // Going for TAR style as the first implementation.
-        dbg!(&metadata);
         let target = fs::read_link(&file_def.system_path)?;
         let _file_size = packer.pack_header(writer, file_def, metadata, Some(target))?;
     // if file is a regular file, then proceed with the base case

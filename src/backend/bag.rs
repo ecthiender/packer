@@ -33,7 +33,7 @@
 
 mod byteorder;
 mod global_header;
-pub mod header;
+mod header;
 
 use std::{
     fs::File,
